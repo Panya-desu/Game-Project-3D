@@ -1,0 +1,3 @@
+repository "Game Project/Game Project@18967397956465@cloud"
+  path "/"
+    smartbranch "/main/update"
