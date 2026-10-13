@@ -7,8 +7,16 @@ using UnityEngine;
 /// Each quest has objectives (collect items, unlock doors, interact with objects).
 /// Once all objectives in a quest are done, the next quest starts automatically.
 /// </summary>
-public class QuestManager : MonoBehaviour
+public class QuestManager : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool started;
+        public int questIndex;
+        public bool[] completed;
+    }
+
     [Header("UI")]
     [SerializeField] private TextMeshProUGUI questText;
 
@@ -30,6 +38,87 @@ public class QuestManager : MonoBehaviour
         if (questText != null)
         {
             questText.text = "";
+        }
+
+        if (SaveSystem.TryLoad(this, out SaveState state) && state.started)
+        {
+            RestoreProgress(state);
+        }
+    }
+
+    public string CaptureState()
+    {
+        SaveState state = new SaveState
+        {
+            started = hasStarted,
+            questIndex = currentQuestIndex
+        };
+
+        if (currentQuestIndex >= 0 && currentQuestIndex < quests.Count)
+        {
+            List<QuestObjective> objectives = quests[currentQuestIndex].objectives;
+            state.completed = new bool[objectives.Count];
+            for (int i = 0; i < objectives.Count; i++)
+            {
+                state.completed[i] = objectives[i].isCompleted;
+            }
+        }
+
+        return JsonUtility.ToJson(state);
+    }
+
+    /// <summary>
+    /// คืนค่าความคืบหน้าเควสจาก save
+    /// </summary>
+    private void RestoreProgress(SaveState state)
+    {
+        hasStarted = true;
+        currentQuestIndex = Mathf.Clamp(state.questIndex, 0, quests.Count);
+
+        // เควสก่อนหน้าทำเสร็จหมดแล้ว
+        for (int q = 0; q < currentQuestIndex; q++)
+        {
+            foreach (QuestObjective obj in quests[q].objectives)
+            {
+                MarkObjectiveDone(obj);
+            }
+        }
+
+        LoadCurrentQuest();
+
+        // Objective ที่ทำเสร็จไปแล้วในเควสปัจจุบัน
+        if (currentQuestIndex < quests.Count && state.completed != null)
+        {
+            List<QuestObjective> objectives = quests[currentQuestIndex].objectives;
+            for (int i = 0; i < objectives.Count && i < state.completed.Length; i++)
+            {
+                if (state.completed[i])
+                {
+                    MarkObjectiveDone(objectives[i]);
+                    completedObjectives++;
+                }
+            }
+            UpdateUI();
+        }
+
+        Debug.Log("[QuestManager] Restored quest progress: index " + currentQuestIndex);
+    }
+
+    private void MarkObjectiveDone(QuestObjective obj)
+    {
+        obj.isCompleted = true;
+
+        if (obj.targetObject == null) return;
+
+        QuestInteractable interactable = obj.targetObject.GetComponent<QuestInteractable>();
+        if (interactable != null)
+        {
+            interactable.canInteract = false;
+        }
+
+        if (obj.hideOnComplete)
+        {
+            obj.targetObject.SetActive(false);
         }
     }
 

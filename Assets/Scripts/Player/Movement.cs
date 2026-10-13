@@ -1,7 +1,15 @@
 using UnityEngine;
 
-public class Movement : MonoBehaviour
+public class Movement : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public Vector3 position;
+        public float yaw;
+        public float pitch;
+    }
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
 
     public float speed = 6f;
@@ -20,11 +28,42 @@ public class Movement : MonoBehaviour
     void Start()
     {
         controller = GetComponent<CharacterController>();
+
+        // กลับไปตำแหน่งที่ save ไว้ (ต้องปิด CharacterController ก่อนย้ายตำแหน่ง)
+        if (SaveSystem.TryLoad(this, out SaveState state))
+        {
+            controller.enabled = false;
+            transform.position = state.position;
+            transform.rotation = Quaternion.Euler(0f, state.yaw, 0f);
+            controller.enabled = true;
+
+            MouseLook mouseLook = GetComponentInChildren<MouseLook>();
+            if (mouseLook != null)
+            {
+                mouseLook.SetPitch(state.pitch);
+            }
+        }
+    }
+
+    public string CaptureState()
+    {
+        MouseLook mouseLook = GetComponentInChildren<MouseLook>();
+        return JsonUtility.ToJson(new SaveState
+        {
+            position = transform.position,
+            yaw = transform.eulerAngles.y,
+            pitch = mouseLook != null ? mouseLook.Pitch : 0f
+        });
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (PauseMenu.IsPaused)
+        {
+            return;
+        }
+
         if (dialogueManager != null && dialogueManager.IsTalking())
         {
             //velocity = Vector3.zero;

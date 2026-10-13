@@ -16,7 +16,7 @@ using System.Collections;
 /// 5. ลาก TMP_Text จอ keypad ใส่ช่อง displayText
 /// 6. ลาก InteractiveDoor ใส่ช่อง interactiveDoor
 /// </summary>
-public class CombinedCodeKeypad : Interactable
+public class CombinedCodeKeypad : Interactable, ISaveable
 {
     [Header("Letter Code (จากตาราง A-Z)")]
     [Tooltip("RandomLetterCodeDisplay ที่แปลงตัวอักษรเป็นตัวเลข")]
@@ -57,6 +57,16 @@ public class CombinedCodeKeypad : Interactable
         GenerateCombinedCode();
 
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>
@@ -104,6 +114,11 @@ public class CombinedCodeKeypad : Interactable
         {
             Debug.Log($"[CombinedCodeKeypad] {codeWord.ToUpper()} = {letterCode} + Hints = {hintCode} → Code: {letterValue} + {hintValue} = {correctCode}");
         }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new KeypadSaveState { solved = !canInteract, code = correctCode });
     }
 
     public override void Interact()

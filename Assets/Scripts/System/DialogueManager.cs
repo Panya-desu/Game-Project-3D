@@ -1,8 +1,14 @@
 using TMPro;
 using UnityEngine;
 
-public class DialogueManager : MonoBehaviour
+public class DialogueManager : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool firstDialogueDone;
+    }
+
     public GameObject dialoguePanel;
     public TextMeshProUGUI nameText;
     public TextMeshProUGUI dialogueText;
@@ -13,14 +19,31 @@ public class DialogueManager : MonoBehaviour
     private bool isFirstDialogue = true;
     private bool isTalking = false;
 
+    public bool FirstDialogueDone => !isFirstDialogue;
+
+    private void Awake()
+    {
+        if (SaveSystem.TryLoad(this, out SaveState state))
+        {
+            isFirstDialogue = !state.firstDialogueDone;
+        }
+    }
+
     private void Start()
     {
         dialoguePanel.SetActive(false);
     }
 
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { firstDialogueDone = !isFirstDialogue });
+    }
+
     void Update()
     {
-        if (isTalking && (Input.GetKeyDown(KeyCode.E) || Input.GetMouseButtonDown(0)))
+        if (PauseMenu.IsPaused) return;
+
+        if (isTalking &&(Input.GetKeyDown(KeyCode.E) || Input.GetMouseButtonDown(0)))
         {
             NextLine();
         }

@@ -1,11 +1,33 @@
 using UnityEngine;
 
-public class PhoneInteractable : Interactable
+public class PhoneInteractable : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool collected;
+        public bool active;
+    }
+
     private void Start()
     {
         // Default interaction text
         interactText = "press E to collect phone";
+
+        // Already collected in save
+        if (SaveSystem.TryLoad(this, out SaveState state) && state.collected)
+        {
+            canInteract = false;
+            if (!state.active)
+            {
+                gameObject.SetActive(false);
+            }
+        }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { collected = !canInteract, active = gameObject.activeSelf });
     }
 
     public override void Interact()

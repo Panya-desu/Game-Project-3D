@@ -5,8 +5,14 @@ using UnityEngine;
 /// เมื่อ player interact จะเก็บของ (บันทึก itemID) แล้ว Object B จะหายไป
 /// ใช้คู่กับ PlaceItemInteractable ที่วางบน Object A
 /// </summary>
-public class ItemPickup : Interactable
+public class ItemPickup : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool active;
+    }
+
     [Header("Item Settings")]
     [Tooltip("ID ของไอเทม ใช้จับคู่กับ PlaceItemInteractable")]
     [SerializeField] private string itemID = "item_default";
@@ -22,9 +28,23 @@ public class ItemPickup : Interactable
     private static readonly System.Collections.Generic.HashSet<string> collectedItems
         = new System.Collections.Generic.HashSet<string>();
 
+    private void Awake()
+    {
+        // เก็บไปแล้วใน save → ซ่อน
+        if (SaveSystem.TryLoad(this, out SaveState state) && !state.active)
+        {
+            gameObject.SetActive(false);
+        }
+    }
+
     private void Start()
     {
         interactText = pickupText;
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { active = gameObject.activeSelf });
     }
 
     public override void Interact()
@@ -61,5 +81,20 @@ public class ItemPickup : Interactable
     public static void ClearAllItems()
     {
         collectedItems.Clear();
+    }
+
+    /// <summary>
+    /// ดึง/ตั้งค่า item ทั้งหมด (ใช้กับ SaveSystem)
+    /// </summary>
+    public static System.Collections.Generic.List<string> GetAllItems()
+    {
+        return new System.Collections.Generic.List<string>(collectedItems);
+    }
+
+    public static void SetAllItems(System.Collections.Generic.IEnumerable<string> items)
+    {
+        collectedItems.Clear();
+        if (items == null) return;
+        collectedItems.UnionWith(items);
     }
 }

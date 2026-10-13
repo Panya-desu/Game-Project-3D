@@ -11,8 +11,14 @@ using UnityEngine;
 /// 3. Add Component "ObjectPileHint" ลงบน parent
 /// 4. Script จะสุ่มเปิด 0-9 ชิ้นจาก child ที่มี
 /// </summary>
-public class ObjectPileHint : MonoBehaviour
+public class ObjectPileHint : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public int count;
+    }
+
     [Header("Pile Settings")]
     [Tooltip("จำนวนสูงสุดที่สุ่มได้ (0 ถึง maxCount) ค่าเริ่มต้น 9")]
     [Range(1, 9)]
@@ -28,8 +34,12 @@ public class ObjectPileHint : MonoBehaviour
 
     private void Awake()
     {
-        // สุ่มจำนวนหรือใช้ค่าที่กำหนด
-        if (overrideCount >= 0)
+        // ใช้ค่าจาก save / ค่าที่กำหนด / สุ่ม
+        if (SaveSystem.TryLoad(this, out SaveState state))
+        {
+            VisibleCount = state.count;
+        }
+        else if (overrideCount >= 0)
         {
             VisibleCount = Mathf.Clamp(overrideCount, 0, maxCount);
         }
@@ -39,6 +49,11 @@ public class ObjectPileHint : MonoBehaviour
         }
 
         ApplyVisibility();
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { count = VisibleCount });
     }
 
     /// <summary>

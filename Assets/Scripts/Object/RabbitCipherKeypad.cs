@@ -20,8 +20,17 @@ using System.Collections.Generic;
 /// 5. ลาก TMP_Text จอ keypad ใส่ช่อง displayText
 /// 6. ลาก InteractiveDoor ใส่ช่อง interactiveDoor
 /// </summary>
-public class RabbitCipherKeypad : Interactable
+public class RabbitCipherKeypad : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool solved;
+        public string code;
+        public string evenText;
+        public string oddText;
+    }
+
     private static readonly string[] NumberWords =
     {
         "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"
@@ -65,9 +74,32 @@ public class RabbitCipherKeypad : Interactable
     private bool isEnteringCode = false;
     private bool isProcessingFeedback = false;
 
+    private SaveState loadedState;
+
     private void Awake()
     {
-        GenerateCipher();
+        // ใช้รหัสและข้อความเดิมจาก save
+        if (SaveSystem.TryLoad(this, out loadedState) && !string.IsNullOrEmpty(loadedState.code))
+        {
+            correctCode = loadedState.code;
+            if (evenLettersText != null) evenLettersText.text = loadedState.evenText;
+            if (oddLettersText != null) oddLettersText.text = loadedState.oddText;
+        }
+        else
+        {
+            GenerateCipher();
+        }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState
+        {
+            solved = !canInteract,
+            code = correctCode,
+            evenText = evenLettersText != null ? evenLettersText.text : "",
+            oddText = oddLettersText != null ? oddLettersText.text : ""
+        });
     }
 
     private void Start()
@@ -85,6 +117,16 @@ public class RabbitCipherKeypad : Interactable
         }
 
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (loadedState != null && loadedState.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>

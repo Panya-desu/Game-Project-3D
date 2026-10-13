@@ -12,8 +12,14 @@ using UnityEngine;
 /// สำคัญ: ต้อง assign targetVisual ใน Inspector!
 /// targetVisual ควรเป็น child object ที่เป็น model ของไอเทมที่จะวาง
 /// </summary>
-public class PlaceItemInteractable : Interactable
+public class PlaceItemInteractable : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool placed;
+    }
+
     [Header("Item Settings")]
     [Tooltip("ID ของไอเทมที่ต้องเก็บมาก่อน (ต้องตรงกับ ItemPickup)")]
     [SerializeField] private string requiredItemID = "item_default";
@@ -36,6 +42,23 @@ public class PlaceItemInteractable : Interactable
 
     private bool isPlaced = false;
 
+    /// <summary>
+    /// วางไอเทมแล้วหรือยัง (ใช้เช็คจาก script อื่น เช่น LeverPuzzle)
+    /// </summary>
+    public bool IsPlaced => isPlaced;
+
+    private void Awake()
+    {
+        if (SaveSystem.TryLoad(this, out SaveState state) && state.placed)
+        {
+            isPlaced = true;
+            if (disableAfterPlace)
+            {
+                canInteract = false;
+            }
+        }
+    }
+
     private void Start()
     {
         if (targetVisual == null)
@@ -44,10 +67,15 @@ public class PlaceItemInteractable : Interactable
             return;
         }
 
-        // ซ่อน targetVisual ตอนเริ่มเกม (จุดวางว่างเปล่า)
-        targetVisual.SetActive(false);
+        // ซ่อน targetVisual ตอนเริ่มเกม (จุดวางว่างเปล่า) ยกเว้นวางไว้แล้วใน save
+        targetVisual.SetActive(isPlaced);
 
         UpdateInteractText();
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { placed = isPlaced });
     }
 
     public override void Interact()

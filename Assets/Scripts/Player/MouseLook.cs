@@ -8,15 +8,28 @@ public class MouseLook : MonoBehaviour
     public Transform playerBody;
 
     float xRotation = 0f;
+
+    public float Pitch => xRotation;
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
     }
 
+    public void SetPitch(float pitch)
+    {
+        xRotation = Mathf.Clamp(pitch, -90f, 90f);
+        transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+    }
 
     // Update is called once per frame
     void Update()
     {
+        if (PauseMenu.IsPaused)
+        {
+            return;
+        }
+
         if (KeypadInteractable.IsEnteringKeypad)
         {
             return;

@@ -13,7 +13,7 @@ using System.Collections;
 /// 4. ลาก TMP_Text จอ keypad ใส่ช่อง displayText
 /// 5. ลาก InteractiveDoor ใส่ช่อง interactiveDoor
 /// </summary>
-public class RandomDigitHintKeypad : Interactable
+public class RandomDigitHintKeypad : Interactable, ISaveable
 {
     [Header("Digit Hints (คำใบ้ตัวเลข 4 จุด)")]
     [Tooltip("TMP_Text 4 ตัว วางตามจุดต่างๆ แต่ละตัวแสดงตัวเลข 1 หลัก (ลำดับ = ลำดับรหัส)")]
@@ -52,6 +52,16 @@ public class RandomDigitHintKeypad : Interactable
 
         // Initialize display
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>
@@ -61,9 +71,16 @@ public class RandomDigitHintKeypad : Interactable
     {
         correctCode = "";
 
+        // ใช้ตัวเลขเดิมจาก save
+        string savedCode = null;
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.code != null && state.code.Length == hintDigits.Length)
+        {
+            savedCode = state.code;
+        }
+
         for (int i = 0; i < hintDigits.Length; i++)
         {
-            int digit = Random.Range(0, 10);
+            int digit = savedCode != null ? savedCode[i] - '0' : Random.Range(0, 10);
             correctCode += digit.ToString();
 
             if (hintDigits[i] != null)
@@ -80,6 +97,11 @@ public class RandomDigitHintKeypad : Interactable
         {
             Debug.Log("[RandomDigitHintKeypad] Generated code: " + correctCode);
         }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new KeypadSaveState { solved = !canInteract, code = correctCode });
     }
 
     public override void Interact()

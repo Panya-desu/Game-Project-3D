@@ -14,7 +14,7 @@ using System.Collections;
 /// 4. ลาก InteractiveDoor ที่จะ unlock ใส่ช่อง interactiveDoor
 /// 5. ตั้ง codeWord เป็นคำที่ต้องการ (default: "EVIE")
 /// </summary>
-public class LetterCodeKeypad : Interactable
+public class LetterCodeKeypad : Interactable, ISaveable
 {
     [Header("Code Settings")]
     [Tooltip("คำที่ใช้เป็นรหัส ตัวอักษรแต่ละตัวจะถูกแปลงเป็นตัวเลขตาม RandomLetterCodeDisplay")]
@@ -54,6 +54,16 @@ public class LetterCodeKeypad : Interactable
 
         // Initialize display
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>
@@ -74,6 +84,11 @@ public class LetterCodeKeypad : Interactable
         {
             Debug.Log("[LetterCodeKeypad] Word: " + codeWord.ToUpper() + " → Code: " + correctCode);
         }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new KeypadSaveState { solved = !canInteract, code = correctCode });
     }
 
     public override void Interact()

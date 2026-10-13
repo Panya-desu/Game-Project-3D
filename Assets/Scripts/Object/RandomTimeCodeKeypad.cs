@@ -13,7 +13,7 @@ using System.Collections;
 /// 3. ลาก TMP_Text ที่เป็นจอ keypad ใส่ช่อง displayText
 /// 4. ลาก InteractiveDoor ที่จะ unlock ใส่ช่อง interactiveDoor
 /// </summary>
-public class RandomTimeCodeKeypad : Interactable
+public class RandomTimeCodeKeypad : Interactable, ISaveable
 {
     [Header("Time Hint (คำใบ้เวลา)")]
     [Tooltip("TMP_Text ที่จะแสดงเวลาแบบสุ่ม เช่น 14:59")]
@@ -50,6 +50,16 @@ public class RandomTimeCodeKeypad : Interactable
 
         // Initialize display
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>
@@ -59,6 +69,13 @@ public class RandomTimeCodeKeypad : Interactable
     {
         int hour = Random.Range(0, 24);     // 0-23
         int minute = Random.Range(0, 60);   // 0-59
+
+        // ใช้เวลาเดิมจาก save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.code != null && state.code.Length == 4)
+        {
+            hour = int.Parse(state.code.Substring(0, 2));
+            minute = int.Parse(state.code.Substring(2, 2));
+        }
 
         // สร้างรหัส 4 หลัก เช่น 14:59 → "1459", 02:05 → "0205"
         correctCode = hour.ToString("D2") + minute.ToString("D2");
@@ -79,6 +96,11 @@ public class RandomTimeCodeKeypad : Interactable
         {
             Debug.Log("[RandomTimeCodeKeypad] Generated time: " + timeDisplay + " → Code: " + correctCode);
         }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new KeypadSaveState { solved = !canInteract, code = correctCode });
     }
 
     public override void Interact()

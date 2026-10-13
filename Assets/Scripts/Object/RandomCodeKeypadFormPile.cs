@@ -11,7 +11,7 @@ using System.Collections;
 /// 2. ลาก 3 กอง ใส่ช่อง pileHints ใน Inspector
 /// 3. Keypad จะอ่านจำนวนจากแต่ละกองตอนเริ่มเกมเพื่อสร้างรหัส
 /// </summary>
-public class RandomCodeKeypadFormPile : Interactable
+public class RandomCodeKeypadFormPile : Interactable, ISaveable
 {
     [Header("Pile Hints (คำใบ้ 3 กอง)")]
     [Tooltip("ลาก ObjectPileHint 3 กองเข้ามา ลำดับ = ลำดับตัวเลขรหัส")]
@@ -47,6 +47,16 @@ public class RandomCodeKeypadFormPile : Interactable
 
         // Initialize display
         ResetDisplay();
+
+        // ไขรหัสไปแล้วใน save
+        if (SaveSystem.TryLoad(this, out KeypadSaveState state) && state.solved)
+        {
+            canInteract = false;
+            if (displayText != null)
+            {
+                displayText.text = "UNLOCKED";
+            }
+        }
     }
 
     /// <summary>
@@ -73,6 +83,11 @@ public class RandomCodeKeypadFormPile : Interactable
         {
             Debug.Log("[RandomCodeKeypadFormPile] Generated code: " + correctCode);
         }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new KeypadSaveState { solved = !canInteract, code = correctCode });
     }
 
     public override void Interact()

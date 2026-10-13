@@ -1,7 +1,15 @@
 using UnityEngine;
+using System.Collections;
 
-public class InteractiveDoor : Interactable
+public class InteractiveDoor : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool locked;
+        public bool open;
+    }
+
     [Header("Door Lock Settings")]
     [SerializeField] private bool isLocked = true;
     [SerializeField] private string lockedText = "Door is locked";
@@ -12,10 +20,41 @@ public class InteractiveDoor : Interactable
     [SerializeField] private DoorController doorController;
 
     private bool isOpen = false;
+    private bool openOnLoad = false;
+
+    private void Awake()
+    {
+        if (SaveSystem.TryLoad(this, out SaveState state))
+        {
+            isLocked = state.locked;
+            openOnLoad = state.open;
+        }
+    }
 
     private void Start()
     {
         UpdateInteractText();
+
+        if (openOnLoad)
+        {
+            StartCoroutine(OpenAfterLoad());
+        }
+    }
+
+    private IEnumerator OpenAfterLoad()
+    {
+        // รอ 1 เฟรมให้ DoorController.Start() ปิด Animator ก่อน แล้วค่อยเปิดประตู
+        yield return null;
+
+        if (!isOpen)
+        {
+            ToggleDoor();
+        }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { locked = isLocked, open = isOpen });
     }
 
     public override void Interact()

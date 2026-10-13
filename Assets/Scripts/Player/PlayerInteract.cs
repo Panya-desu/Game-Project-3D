@@ -15,7 +15,7 @@ public class PlayerInteract : MonoBehaviour
             return;
         }
 
-        if (KeypadInteractable.IsEnteringKeypad)
+        if (KeypadInteractable.IsEnteringKeypad || PauseMenu.IsPaused)
         {
             interactText.text = "";
             return;

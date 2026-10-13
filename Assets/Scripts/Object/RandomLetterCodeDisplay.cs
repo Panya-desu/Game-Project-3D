@@ -13,8 +13,14 @@ using TMPro;
 /// 1. วาง script นี้บน object ที่มี TMP_Text หรือลาก TMP_Text ใส่ช่อง displayText
 /// 2. เมื่อเริ่มเกมจะสุ่มตัวเลขให้ทุกตัวอักษรอัตโนมัติ
 /// </summary>
-public class RandomLetterCodeDisplay : MonoBehaviour
+public class RandomLetterCodeDisplay : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public int[] digits;
+    }
+
     [Header("Display")]
     [Tooltip("TMP_Text ที่จะแสดงตาราง A-Z = ตัวเลข")]
     [SerializeField] private TMP_Text displayText;
@@ -42,7 +48,19 @@ public class RandomLetterCodeDisplay : MonoBehaviour
         }
 
         // สุ่มตัวเลขใน Awake() เพื่อให้พร้อมก่อนที่ script อื่นจะเรียกใช้ใน Start()
-        GenerateRandomDigits();
+        if (SaveSystem.TryLoad(this, out SaveState state) && state.digits != null && state.digits.Length == 26)
+        {
+            letterDigits = state.digits;
+        }
+        else
+        {
+            GenerateRandomDigits();
+        }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { digits = letterDigits });
     }
 
     private void Start()

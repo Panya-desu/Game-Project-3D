@@ -2,8 +2,15 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 
-public class PhoneManager : MonoBehaviour
+public class PhoneManager : MonoBehaviour, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool hasPhone;
+        public bool isLocked;
+    }
+
     public static PhoneManager Instance { get; private set; }
 
     [Header("Phone UI & Animation")]
@@ -44,6 +51,17 @@ public class PhoneManager : MonoBehaviour
         {
             Destroy(gameObject);
         }
+
+        if (SaveSystem.TryLoad(this, out SaveState state))
+        {
+            hasPhone = state.hasPhone;
+            isLocked = state.isLocked;
+        }
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { hasPhone = hasPhone, isLocked = isLocked });
     }
 
     private void Start()
@@ -78,7 +96,7 @@ public class PhoneManager : MonoBehaviour
     private void Update()
     {
         // Don't allow using phone during dialogue or keypad code entries
-        if (KeypadInteractable.IsEnteringKeypad)
+        if (KeypadInteractable.IsEnteringKeypad || PauseMenu.IsPaused)
             return;
 
         if (isPhoneOpen)

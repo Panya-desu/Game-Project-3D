@@ -6,8 +6,14 @@ using UnityEngine;
 /// ถ้ามี → unlock ประตู (InteractiveDoor) แล้วเปิดอัตโนมัติ
 /// ถ้ายังไม่มี → แสดงข้อความ locked
 /// </summary>
-public class KeyDoorInteractable : Interactable
+public class KeyDoorInteractable : Interactable, ISaveable
 {
+    [System.Serializable]
+    private class SaveState
+    {
+        public bool unlocked;
+    }
+
     [Header("Key Settings")]
     [Tooltip("ID ของกุญแจที่ต้องใช้ (ต้องตรงกับ KeyPickup)")]
     [SerializeField] private string requiredKeyID = "key_default";
@@ -34,7 +40,22 @@ public class KeyDoorInteractable : Interactable
             targetDoor = GetComponent<InteractiveDoor>();
         }
 
+        // ปลดล็อกไปแล้วใน save (ประตูจะโหลดสถานะของตัวเอง)
+        if (SaveSystem.TryLoad(this, out SaveState state) && state.unlocked)
+        {
+            isUnlocked = true;
+            if (disableAfterUnlock)
+            {
+                canInteract = false;
+            }
+        }
+
         UpdateInteractText();
+    }
+
+    public string CaptureState()
+    {
+        return JsonUtility.ToJson(new SaveState { unlocked = isUnlocked });
     }
 
     public override void Interact()
