@@ -16,8 +16,6 @@ using System.Collections;
 /// </summary>
 public class LetterCodeKeypad : Interactable
 {
-    public static bool IsEnteringKeypad = false;
-
     [Header("Code Settings")]
     [Tooltip("คำที่ใช้เป็นรหัส ตัวอักษรแต่ละตัวจะถูกแปลงเป็นตัวเลขตาม RandomLetterCodeDisplay")]
     [SerializeField] private string codeWord = "EVIE";
@@ -88,7 +86,7 @@ public class LetterCodeKeypad : Interactable
     private void StartCodeEntry()
     {
         isEnteringCode = true;
-        IsEnteringKeypad = true;
+        KeypadInteractable.IsEnteringKeypad = true;
         currentInput = "";
         UpdateDisplay();
 
@@ -100,7 +98,7 @@ public class LetterCodeKeypad : Interactable
     private void StopCodeEntry()
     {
         isEnteringCode = false;
-        IsEnteringKeypad = false;
+        KeypadInteractable.IsEnteringKeypad = false;
         ResetDisplay();
 
         // Lock cursor back to gameplay mode

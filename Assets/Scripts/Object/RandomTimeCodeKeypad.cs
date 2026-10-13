@@ -15,8 +15,6 @@ using System.Collections;
 /// </summary>
 public class RandomTimeCodeKeypad : Interactable
 {
-    public static bool IsEnteringKeypad = false;
-
     [Header("Time Hint (คำใบ้เวลา)")]
     [Tooltip("TMP_Text ที่จะแสดงเวลาแบบสุ่ม เช่น 14:59")]
     [SerializeField] private TMP_Text hintTimeText;
@@ -93,7 +91,7 @@ public class RandomTimeCodeKeypad : Interactable
     private void StartCodeEntry()
     {
         isEnteringCode = true;
-        IsEnteringKeypad = true;
+        KeypadInteractable.IsEnteringKeypad = true;
         currentInput = "";
         UpdateDisplay();
 
@@ -105,7 +103,7 @@ public class RandomTimeCodeKeypad : Interactable
     private void StopCodeEntry()
     {
         isEnteringCode = false;
-        IsEnteringKeypad = false;
+        KeypadInteractable.IsEnteringKeypad = false;
         ResetDisplay();
 
         // Lock cursor back to gameplay mode

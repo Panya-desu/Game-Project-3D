@@ -15,8 +15,6 @@ using System.Collections;
 /// </summary>
 public class RandomDigitHintKeypad : Interactable
 {
-    public static bool IsEnteringKeypad = false;
-
     [Header("Digit Hints (คำใบ้ตัวเลข 4 จุด)")]
     [Tooltip("TMP_Text 4 ตัว วางตามจุดต่างๆ แต่ละตัวแสดงตัวเลข 1 หลัก (ลำดับ = ลำดับรหัส)")]
     [SerializeField] private TMP_Text[] hintDigits = new TMP_Text[4];
@@ -94,7 +92,7 @@ public class RandomDigitHintKeypad : Interactable
     private void StartCodeEntry()
     {
         isEnteringCode = true;
-        IsEnteringKeypad = true;
+        KeypadInteractable.IsEnteringKeypad = true;
         currentInput = "";
         UpdateDisplay();
 
@@ -106,7 +104,7 @@ public class RandomDigitHintKeypad : Interactable
     private void StopCodeEntry()
     {
         isEnteringCode = false;
-        IsEnteringKeypad = false;
+        KeypadInteractable.IsEnteringKeypad = false;
         ResetDisplay();
 
         // Lock cursor back to gameplay mode

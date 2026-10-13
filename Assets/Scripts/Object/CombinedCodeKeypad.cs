@@ -18,8 +18,6 @@ using System.Collections;
 /// </summary>
 public class CombinedCodeKeypad : Interactable
 {
-    public static bool IsEnteringKeypad = false;
-
     [Header("Letter Code (จากตาราง A-Z)")]
     [Tooltip("RandomLetterCodeDisplay ที่แปลงตัวอักษรเป็นตัวเลข")]
     [SerializeField] private RandomLetterCodeDisplay letterCodeDisplay;
@@ -118,7 +116,7 @@ public class CombinedCodeKeypad : Interactable
     private void StartCodeEntry()
     {
         isEnteringCode = true;
-        IsEnteringKeypad = true;
+        KeypadInteractable.IsEnteringKeypad = true;
         currentInput = "";
         UpdateDisplay();
 
@@ -129,7 +127,7 @@ public class CombinedCodeKeypad : Interactable
     private void StopCodeEntry()
     {
         isEnteringCode = false;
-        IsEnteringKeypad = false;
+        KeypadInteractable.IsEnteringKeypad = false;
         ResetDisplay();
 
         Cursor.lockState = CursorLockMode.Locked;

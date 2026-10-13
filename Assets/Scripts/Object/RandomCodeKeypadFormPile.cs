@@ -13,8 +13,6 @@ using System.Collections;
 /// </summary>
 public class RandomCodeKeypadFormPile : Interactable
 {
-    public static bool IsEnteringKeypad = false;
-
     [Header("Pile Hints (คำใบ้ 3 กอง)")]
     [Tooltip("ลาก ObjectPileHint 3 กองเข้ามา ลำดับ = ลำดับตัวเลขรหัส")]
     [SerializeField] private ObjectPileHint[] pileHints = new ObjectPileHint[3];
@@ -87,7 +85,7 @@ public class RandomCodeKeypadFormPile : Interactable
     private void StartCodeEntry()
     {
         isEnteringCode = true;
-        IsEnteringKeypad = true;
+        KeypadInteractable.IsEnteringKeypad = true;
         currentInput = "";
         UpdateDisplay();
 
@@ -99,7 +97,7 @@ public class RandomCodeKeypadFormPile : Interactable
     private void StopCodeEntry()
     {
         isEnteringCode = false;
-        IsEnteringKeypad = false;
+        KeypadInteractable.IsEnteringKeypad = false;
         ResetDisplay();
 
         // Lock cursor back to gameplay mode
