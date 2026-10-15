@@ -14,7 +14,7 @@ public class DisplayMode : MonoBehaviour
     {
         if (Application.isEditor) return;
         bool windowed = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-windowed") >= 0;
-        Apply(!windowed && PlayerPrefs.GetInt(Key, 1) == 1);
+        if (!windowed) Apply(PlayerPrefs.GetInt(Key, 1) == 1); // -windowed keeps the size given with -screen-width/-height
         var go = new GameObject("[DisplayMode]");
         DontDestroyOnLoad(go);
         go.AddComponent<DisplayMode>();

@@ -34,7 +34,10 @@ public class Door : Interactable, ISaveable
         Debug.Log("[Door] Unlocked: " + gameObject.name);
     }
 
-    public override void Interact()
+    public override void Interact() => Enter(true);
+
+    /// <summary>Goes through the door; playSound false when the caller already played the opening (EnterThrough).</summary>
+    public void Enter(bool playSound)
     {
         if (!isUnlocked)
         {
@@ -51,7 +54,7 @@ public class Door : Interactable, ISaveable
 
         Debug.Log("[Door] Loading scene: " + sceneName);
         canInteract = false;
-        GameAudio.PlaySfx(openSound);
+        if (playSound) GameAudio.PlaySfx(openSound);
         // Fade instead of an instant cut
         ScreenFader.LoadScene(sceneName);
     }

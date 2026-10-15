@@ -34,17 +34,19 @@ public class EnterThrough : Interactable
         if (used || target == null) return;
         used = true;
         canInteract = false;
+        target.canInteract = false; // the Door behind could otherwise be pressed again while the leaf swings
         StartCoroutine(Open());
     }
 
     IEnumerator Open()
     {
+        // one door sound: the leaf's, the Door behind it goes through silently
+        GameAudio.PlaySfx("door_open");
         if (leaf != null)
         {
-            GameAudio.PlaySfx("door_open");
             leaf.OpenDoor();
             yield return new WaitForSeconds(0.6f);
         }
-        target.Interact();
+        target.Enter(false);
     }
 }

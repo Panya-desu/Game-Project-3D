@@ -90,12 +90,7 @@ public class RunTimer : MonoBehaviour
         else
         {
             if (Running && (scene.name == "Confrontation" || scene.name == "DemoEnd")) LastRunTime = Elapsed;
-            Running = false;
-            if (scene.name == "DemoEnd" && LastRunTime >= 0f)
-            {
-                int s = Mathf.RoundToInt(LastRunTime);
-                StartCoroutine(Toast($"You found your way out in {s / 60:00}:{s % 60:00}"));
-            }
+            Running = false; // the end screen (DemoEndScreen) shows LastRunTime
         }
     }
 

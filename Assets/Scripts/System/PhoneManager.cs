@@ -79,10 +79,7 @@ public class PhoneManager : MonoBehaviour, ISaveable
         }
 
         // Also hide the phone panel entirely
-        if (phonePanel != null)
-        {
-            phonePanel.SetActive(false);
-        }
+        SetPhoneVisible(false);
 
         if (notificationText != null)
         {
@@ -169,10 +166,7 @@ public class PhoneManager : MonoBehaviour, ISaveable
         GameAudio.PlaySfx("phone_open");
 
         // Show the panel and enable the Animator, then trigger the open animation
-        if (phonePanel != null)
-        {
-            phonePanel.SetActive(true);
-        }
+        SetPhoneVisible(true);
         if (phoneAnimator != null)
         {
             phoneAnimator.enabled = true;
@@ -209,6 +203,19 @@ public class PhoneManager : MonoBehaviour, ISaveable
         StartCoroutine(HidePanelAfterClose());
     }
 
+    /// <summary>
+    /// The whole phone (frame, lock screen, home screen) is shown only while it is open. Hiding just the
+    /// frame left the lock screen's backdrop peeking over the bottom of taller screens (16:10).
+    /// </summary>
+    private void SetPhoneVisible(bool visible)
+    {
+        if (phonePanel == null) return;
+        var phoneRoot = phonePanel.transform.parent;
+        if (phoneRoot == null || phoneRoot.GetComponent<Canvas>() != null) { phonePanel.SetActive(visible); return; }
+        foreach (Transform part in phoneRoot)
+            if (!transform.IsChildOf(part)) part.gameObject.SetActive(visible);
+    }
+
     private IEnumerator HidePanelAfterClose()
     {
         yield return new WaitForSeconds(closeAnimationDuration);
@@ -216,10 +223,7 @@ public class PhoneManager : MonoBehaviour, ISaveable
         // Only hide if still closed (player didn't re-open during the delay)
         if (!isPhoneOpen)
         {
-            if (phonePanel != null)
-            {
-                phonePanel.SetActive(false);
-            }
+            SetPhoneVisible(false);
             if (phoneAnimator != null)
             {
                 phoneAnimator.enabled = false;

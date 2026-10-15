@@ -22,6 +22,12 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Character Spawn Cost")]
     public static void SpawnCost() => Start("Assets/Scenes/Level_1.unity", "spawn");
 
+    [MenuItem("Tools/Dev/Lab: UI Dump (Level_1)")]
+    public static void UiLevel() => Start("Assets/Scenes/Level_1.unity", "ui");
+
+    [MenuItem("Tools/Dev/Lab: UI Dump (White Space)")]
+    public static void UiWhite() => Start("Assets/Scenes/WhiteSpace.unity", "ui");
+
     [MenuItem("Tools/Dev/Lab: Colour Palettes")]
     public static void Palettes() => Stage("palettes");
 

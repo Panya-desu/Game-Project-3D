@@ -7,7 +7,8 @@ using UnityEngine.SceneManagement;
 ///  1. Waking up: the protagonist is seen standing in her room, looking around, the camera finds the
 ///     stopped clock, then slides back into her eyes (first visit only, not when a save is loaded).
 ///  2. Power restored: the camera looks over the storage room while the lights flicker back on.
-///  3. The door: a white flash and the camera moves towards the door that appeared.
+///  3. The door: a white flash and the camera drifts towards the door that appeared (no walk-up: the
+///     player has not moved, so showing her at the door would look like a teleport back).
 /// Each plays once, when its moment happens during play (a loaded save that is already past it does not replay it).
 /// </summary>
 public class LevelCutscenes : MonoBehaviour
@@ -125,41 +126,23 @@ public class LevelCutscenes : MonoBehaviour
 
     void DoorAppears()
     {
+        // only the door: she is not shown walking up to it, since the player is still standing
+        // where they solved the puzzle when control comes back
         var ending = GameObject.Find("ToEnding");
         var door = ending != null ? ending.GetComponentInChildren<Door>(true) : null;
         Vector3 target = door != null ? door.transform.position + new Vector3(0.4f, 1.6f, 0f) : new Vector3(30.6f, 1.6f, 8f);
-        Vector3 floor = CharacterLibrary.GroundBelow(target);
-        Vector3 walkFrom = floor + new Vector3(-0.3f, 0f, 4.6f);
-        Vector3 walkTo = floor + new Vector3(-0.1f, 0f, 1.3f);
-        float sc = PlayerAvatar.ModelScale;
-
-        var heroView = CharacterLibrary.Spawn(false, walkFrom, walkTo - walkFrom);
-        var heroRoot = heroView != null ? heroView.transform.root.gameObject : null;
-        if (heroRoot != null) { heroRoot.transform.position = walkFrom; heroRoot.SetActive(false); }
-        var doorLook = heroView != null ? heroView.GetComponentInChildren<CharacterLook>() : null;
-        if (doorLook != null) doorLook.LookAt(target);
-        bool reached = false;
 
         var shots = new[]
         {
-            // a flash, and a door stands where there was none
-            new CutscenePlayer.Shot(target + new Vector3(-0.2f, 0.8f, 7.5f), target + new Vector3(-0.2f, 0.4f, 5.2f),
-                                    target + Vector3.up * 0.4f, target, 3f,
+            // a flash, and a door stands where there was none; the camera slowly drifts closer
+            new CutscenePlayer.Shot(target + new Vector3(-0.2f, 0.8f, 7.5f), target + new Vector3(-0.2f, 0.3f, 4.2f),
+                                    target + Vector3.up * 0.4f, target, 4.5f,
                                     onStart: () =>
                                     {
                                         ScreenFader.Flash(new Color(1f, 1f, 1f, 0.9f), 0.8f);
                                         GameAudio.PlaySfx("memory_whoosh");
                                     }),
-            // she walks up to it and reaches for it
-            new CutscenePlayer.Shot(floor + new Vector3(2.6f, 1.35f * sc, 4.8f), floor + new Vector3(1.7f, 1.5f * sc, 2.6f),
-                                    walkFrom + Vector3.up * 1.3f * sc, target + Vector3.up * 0.3f * (sc - 1f), 5.5f,
-                                    onStart: () => { if (heroRoot != null) heroRoot.SetActive(true); },
-                                    onUpdate: k =>
-                                    {
-                                        CharacterLibrary.Walk(heroView, walkFrom, walkTo, Mathf.Clamp01(k / 0.75f));
-                                        if (!reached && k > 0.8f && heroView != null) { reached = true; heroView.Interact(); }
-                                    }),
         };
-        CutscenePlayer.Play(shots, () => { if (heroRoot != null) Destroy(heroRoot); });
+        CutscenePlayer.Play(shots);
     }
 }

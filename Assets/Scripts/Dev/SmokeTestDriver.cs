@@ -437,10 +437,15 @@ public class SmokeTestDriver : MonoBehaviour
         Check(CutscenePlayer.Played >= 3, "door cutscene plays when the levers are solved");
         yield return new WaitForSeconds(2.2f);
         UiShot("cutscene_door");
-        yield return new WaitForSeconds(1.3f); // she is walking to the door now
-        // the v4 rig's skirt/hair/ribbon chains, simulated by EchoSecondaryMotion (the cutscene hero, not the shadow-only player body)
-        var skirt = FindObjectsByType<EchoCharacters.EchoSecondaryMotion>(FindObjectsSortMode.None)
-            .FirstOrDefault(s => s.isActiveAndEnabled && s.transform.root.GetComponent<Movement>() == null);
+        yield return WaitFor(() => !CutscenePlayer.IsPlaying, 20f);
+        // the v4 rig's skirt/hair/ribbon chains, simulated by EchoSecondaryMotion, on a spawned protagonist
+        // (the door cutscene no longer shows her, and the player body is shadow-only)
+        var player = Find<Movement>();
+        Vector3 standAt = CharacterLibrary.GroundBelow(player.transform.position + player.transform.forward * 2f);
+        var testHero = CharacterLibrary.Spawn(false, standAt, -player.transform.forward);
+        if (testHero != null) testHero.transform.root.position = standAt;
+        yield return new WaitForSeconds(0.5f);
+        var skirt = testHero != null ? testHero.transform.root.GetComponentInChildren<EchoCharacters.EchoSecondaryMotion>() : null;
         var skirtBone = skirt != null ? skirt.GetComponentsInChildren<Transform>().FirstOrDefault(t => t.name.StartsWith("SkirtChain")) : null;
         float swing = -1f;
         if (skirt != null)
@@ -454,10 +459,7 @@ public class SmokeTestDriver : MonoBehaviour
         }
         Debug.Log($"[Smoke] skirt: spring={(skirt != null)} bone={(skirtBone != null)} swing={swing:F1}");
         Check(swing > 2f, $"the skirt lags and swings with spring physics ({swing:F1} deg after a sudden step)");
-        yield return new WaitForSeconds(0.5f);
-        yield return new WaitForSeconds(1.8f);
-        UiShot("cutscene_door_walk");
-        yield return WaitFor(() => !CutscenePlayer.IsPlaying, 20f);
+        if (testHero != null) Destroy(testHero.transform.root.gameObject);
 
         // ── Save and Exit from the pause menu, then Continue: doors must come back already open ──
         BackupSave();
@@ -514,6 +516,8 @@ public class SmokeTestDriver : MonoBehaviour
         yield return new WaitForSeconds(1.5f);
         Check(Cursor.lockState == CursorLockMode.None, "cursor free on the end screen");
         Check(!RunTimer.Running && RunTimer.LastRunTime > 0f, $"timer stopped at the end ({RunTimer.LastRunTime:F0} s)");
+        yield return new WaitForSeconds(5f);
+        UiShot("ui_end_screen");
 
         // ── 40-minute limit: run out of time in a fresh house ──
         SaveSystem.StartNewGame("Level_1");

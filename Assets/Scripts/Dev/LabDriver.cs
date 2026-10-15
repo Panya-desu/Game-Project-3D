@@ -35,6 +35,7 @@ public class LabDriver : MonoBehaviour
         else if (task == "palettes") yield return Palettes();
         else if (task == "perf") yield return Perf();
         else if (task == "spawn") yield return SpawnCost();
+        else if (task == "ui") yield return UiDump();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -343,6 +344,35 @@ public class LabDriver : MonoBehaviour
             yield return null;
         }
         rt.Release();
+    }
+
+    /// <summary>The phone's hierarchy and every visible UI graphic near the screen edges.</summary>
+    IEnumerator UiDump()
+    {
+        yield return new WaitForSeconds(5f);
+        string Path(Transform t) { string p = t.name; for (var x = t.parent; x != null; x = x.parent) p = x.name + "/" + p; return p; }
+        var pm = FindAnyObjectByType<PhoneManager>();
+        if (pm != null)
+            foreach (var f in new[] { "phonePanel", "lockScreenPanel", "notificationText" })
+            {
+                var v = pm.GetType().GetField(f, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?.GetValue(pm);
+                var tr = v is Component c ? c.transform : v is GameObject g ? g.transform : null;
+                Debug.Log($"[Lab] ui phone field {f} = {(tr != null ? Path(tr) + " active=" + tr.gameObject.activeInHierarchy : "null")}");
+            }
+        foreach (var q in FindObjectsByType<TMPro.TMP_Text>(FindObjectsInactive.Include, FindObjectsSortMode.None).Where(x => x.name == "QuestText"))
+        {
+            var rt = q.rectTransform; var cs = q.canvas != null ? q.canvas.GetComponent<UnityEngine.UI.CanvasScaler>() : null;
+            Debug.Log($"[Lab] ui QUEST anchorMin={rt.anchorMin} anchorMax={rt.anchorMax} pivot={rt.pivot} pos={rt.anchoredPosition} size={rt.sizeDelta} font={q.font?.name} size={q.fontSize} auto={q.enableAutoSizing} align={q.alignment} color={q.color} scaler={cs?.uiScaleMode} scale={cs?.scaleFactor} ref={cs?.referenceResolution} canvasScale={q.canvas?.scaleFactor} parent={rt.parent?.name}");
+        }
+        foreach (var g in FindObjectsByType<UnityEngine.UI.Graphic>(FindObjectsSortMode.None))
+        {
+            if (!g.isActiveAndEnabled || g.canvas == null || g.color.a < 0.05f) continue;
+            var corners = new Vector3[4]; g.rectTransform.GetWorldCorners(corners);
+            if (g.canvas.renderMode != RenderMode.ScreenSpaceOverlay) continue;
+            float minY = corners.Min(c => c.y), maxX = corners.Max(c => c.x);
+            string txt = g is TMPro.TMP_Text t ? " text='" + t.text.Replace('\n', ' ').Substring(0, Mathf.Min(40, t.text.Length)) + "'" : "";
+            Debug.Log($"[Lab] ui graphic {Path(g.transform)} rect=({corners[0].x:F0},{corners[0].y:F0})-({corners[2].x:F0},{corners[2].y:F0}) screen={Screen.width}x{Screen.height}{txt}");
+        }
     }
 
     IEnumerator Character()
