@@ -354,7 +354,6 @@ public class LabDriver : MonoBehaviour
         var hero = CharacterLibrary.Spawn(false, p, Vector3.back);
         if (System.Environment.GetCommandLineArgs().Contains("-noSkirtSpring"))
         {
-            foreach (var sp in hero.transform.root.GetComponentsInChildren<SkirtSpring>()) sp.enabled = false;
             foreach (var sp in hero.transform.root.GetComponentsInChildren<EchoSecondaryMotion>()) sp.enabled = false;
         }
         yield return new WaitForSeconds(0.5f);

@@ -26,8 +26,6 @@ public class CharacterLook : MonoBehaviour
         if (anim == null) return null;
         var look = anim.GetComponent<CharacterLook>();
         if (look == null) look = anim.gameObject.AddComponent<CharacterLook>();
-        foreach (var oldSpring in root.GetComponentsInChildren<SkirtSpring>(true)) oldSpring.enabled = false;
-        foreach (var oldSway in root.GetComponentsInChildren<HairSway>(true)) oldSway.enabled = false;
         var secondary = root.GetComponentInChildren<EchoSecondaryMotion>(true);
         if (secondary == null) secondary = root.AddComponent<EchoSecondaryMotion>();
         // gentler than the package defaults: with 8 degrees per joint the three-joint skirt chains plus the
@@ -70,15 +68,15 @@ public class CharacterLook : MonoBehaviour
         Color shade = new Color(0.74f, 0.76f, 0.9f), outline = new Color(0.2f, 0.2f, 0.3f);
         float width = 0.8f, shadeAmount = 0.85f, rim = 0.3f, spec = 0f, ambient = 0.65f;
         Color emission = Color.black, rimColor = new Color(1f, 0.95f, 0.9f);
-        float selfLit = 0f, shadowStrength = 0.6f, sway = 0f;
+        float selfLit = 0f, shadowStrength = 0.6f;
         Color specColor = Color.white;
 
         // palette "U1 + S1" (_work/palettes.py): soft porcelain skin with a pink shadow; blue-black hair with a
         // blue shadow, a pale-blue highlight band and a deep navy outline, in the HoYoverse manner
         if (n.Contains("body")) { shade = new Color(0.95f, 0.8f, 0.84f); outline = new Color(0.5f, 0.28f, 0.26f); width = 0.55f; shadeAmount = 0.75f; rim = 0.22f; shadowStrength = 0.3f; }
-        else if (n.Contains("hair")) { shade = new Color(0.62f, 0.66f, 0.92f); outline = new Color(0.04f, 0.05f, 0.11f); width = 0.9f; spec = 0.55f; specColor = new Color(0.72f, 0.8f, 1f); sway = 1f; shadowStrength = 0.45f; }
+        else if (n.Contains("hair")) { shade = new Color(0.62f, 0.66f, 0.92f); outline = new Color(0.04f, 0.05f, 0.11f); width = 0.9f; spec = 0.55f; specColor = new Color(0.72f, 0.8f, 1f); shadowStrength = 0.45f; }
         else if (n.Contains("eye")) { shadeAmount = 0.15f; width = 0f; rim = 0f; ambient = 0.9f; emission = new Color(0.06f, 0.06f, 0.08f); selfLit = 0.75f; shadowStrength = 0f; }
-        else if (n.Contains("ribbon")) { shade = new Color(0.78f, 0.55f, 0.62f); outline = new Color(0.35f, 0.08f, 0.12f); width = 0.6f; sway = 0.7f; }
+        else if (n.Contains("ribbon")) { shade = new Color(0.78f, 0.55f, 0.62f); outline = new Color(0.35f, 0.08f, 0.12f); width = 0.6f; }
         else if (n.Contains("shirt"))
         {
             // a white blouse and collar (the v4 Shirt.png is plain white): a blue shade tint and navy
