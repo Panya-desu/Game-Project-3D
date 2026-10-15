@@ -13,6 +13,15 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Player Body (White Space)")]
     public static void PlayerBodyWhite() => Start("Assets/Scenes/WhiteSpace.unity", "player");
 
+    [MenuItem("Tools/Dev/Lab: Performance (Title Screen)")]
+    public static void PerfTitle() => Start("Assets/Scenes/Main.unity", "perf");
+
+    [MenuItem("Tools/Dev/Lab: Performance (Level_1)")]
+    public static void PerfLevel() => Start("Assets/Scenes/Level_1.unity", "perf");
+
+    [MenuItem("Tools/Dev/Lab: Character Spawn Cost")]
+    public static void SpawnCost() => Start("Assets/Scenes/Level_1.unity", "spawn");
+
     [MenuItem("Tools/Dev/Lab: Colour Palettes")]
     public static void Palettes() => Stage("palettes");
 

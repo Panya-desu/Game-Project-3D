@@ -37,6 +37,8 @@ public class CharacterLook : MonoBehaviour
         secondary.hairMaxAngle = 5f;
         secondary.stiffness = 300f;
         secondary.drag = 0.35f;
+        secondary.shirtMaxAngle = 2.5f;
+        secondary.layerGuard = false; // the per-frame cloth checks cost ~40 ms per character (title screen lag)
         secondary.enabled = true;
         var shader = CharacterLibrary.Get() != null ? CharacterLibrary.Get().toonShader : null;
         if (shader == null) shader = Shader.Find("Echo/Toon");

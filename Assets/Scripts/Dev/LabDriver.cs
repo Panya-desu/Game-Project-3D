@@ -33,6 +33,8 @@ public class LabDriver : MonoBehaviour
         else if (task == "character") yield return Character();
         else if (task == "player") yield return Player();
         else if (task == "palettes") yield return Palettes();
+        else if (task == "perf") yield return Perf();
+        else if (task == "spawn") yield return SpawnCost();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -262,6 +264,85 @@ public class LabDriver : MonoBehaviour
             View($"pal_{pal}_shoes", new Vector3(0.45f, 0.3f, 0.75f), new Vector3(0, 0.12f, 0), 32f);
             foreach (var r in rends) r.SetPropertyBlock(null);
         }
+    }
+
+    /// <summary>Frame cost of the current scene (CPU + GPU, rendered at 1920x1080), with things switched off one by one.</summary>
+    IEnumerator Perf()
+    {
+        yield return new WaitForSeconds(3f);
+        var cam = Camera.main;
+        if (cam == null) { Debug.Log("[Lab] perf: no camera"); yield break; }
+        var rt = new RenderTexture(1920, 1080, 24) { antiAliasing = 1 };
+        var tex1 = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+        var camData = UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam);
+        var chars = FindObjectsByType<EchoCharacters.EchoCharacterView>(FindObjectsSortMode.None).Select(v => v.transform.root.gameObject).Distinct().ToList();
+        Debug.Log($"[Lab] perf scene={SceneManager.GetActiveScene().name} characters={chars.Count} lights={FindObjectsByType<Light>(FindObjectsSortMode.None).Length} shadowLights={FindObjectsByType<Light>(FindObjectsSortMode.None).Count(l => l.shadows != LightShadows.None)} renderers={FindObjectsByType<Renderer>(FindObjectsSortMode.None).Length} atlas={urp?.additionalLightsShadowmapResolution}");
+
+        IEnumerator Measure(string label)
+        {
+            for (int i = 0; i < 10; i++) { cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; yield return null; }
+            var sw = new System.Diagnostics.Stopwatch();
+            int n = 60; double total = 0, worst = 0;
+            for (int i = 0; i < n; i++)
+            {
+                sw.Restart();
+                cam.targetTexture = rt; cam.Render(); cam.targetTexture = null;
+                RenderTexture.active = rt; tex1.ReadPixels(new Rect(0, 0, 1, 1), 0, 0); RenderTexture.active = null; // wait for the GPU
+                double ms = sw.Elapsed.TotalMilliseconds;
+                total += ms; worst = System.Math.Max(worst, ms);
+                yield return null;
+            }
+            Debug.Log($"[Lab] perf {label}: avg {total / n:F1} ms, worst {worst:F1} ms (render + GPU) | frame {Time.unscaledDeltaTime * 1000f:F1} ms");
+        }
+
+        yield return Measure("baseline");
+        var springs = FindObjectsByType<EchoCharacters.EchoSecondaryMotion>(FindObjectsSortMode.None);
+        foreach (var sp in springs) sp.enabled = false;
+        yield return Measure("no secondary motion");
+        foreach (var sp in springs) sp.enabled = true;
+        foreach (var c in chars) c.SetActive(false);
+        yield return Measure("characters hidden");
+        foreach (var c in chars) c.SetActive(true);
+        if (urp != null)
+        {
+            int keep = urp.additionalLightsShadowmapResolution;
+            urp.additionalLightsShadowmapResolution = 2048;
+            yield return Measure("shadow atlas 2048");
+            urp.additionalLightsShadowmapResolution = keep;
+        }
+        bool pp = camData.renderPostProcessing;
+        camData.renderPostProcessing = false;
+        yield return Measure("no post-processing");
+        camData.renderPostProcessing = pp;
+        var lights = FindObjectsByType<Light>(FindObjectsSortMode.None).Where(l => l.shadows != LightShadows.None).ToList();
+        var modes = lights.Select(l => l.shadows).ToList();
+        foreach (var l in lights) l.shadows = LightShadows.None;
+        yield return Measure("no shadows");
+        for (int i = 0; i < lights.Count; i++) lights[i].shadows = modes[i];
+        rt.Release();
+    }
+
+    /// <summary>How long spawning a character takes (the hitch when a cutscene starts), and the frames after.</summary>
+    IEnumerator SpawnCost()
+    {
+        yield return new WaitForSeconds(2f);
+        var cam = Camera.main;
+        var rt = new RenderTexture(1920, 1080, 24);
+        for (int i = 0; i < 3; i++)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var v = CharacterLibrary.Spawn(false, new Vector3(5f + i, 0f, 4f), Vector3.forward);
+            double spawn = sw.Elapsed.TotalMilliseconds;
+            sw.Restart();
+            if (cam != null) { cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; }
+            double firstRender = sw.Elapsed.TotalMilliseconds;
+            Debug.Log($"[Lab] spawn #{i}: Spawn {spawn:F1} ms, first render after it {firstRender:F1} ms");
+            yield return null;
+            Destroy(v.transform.root.gameObject);
+            yield return null;
+        }
+        rt.Release();
     }
 
     IEnumerator Character()

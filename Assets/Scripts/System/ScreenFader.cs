@@ -10,6 +10,8 @@ using UnityEngine.UI;
 public class ScreenFader : MonoBehaviour
 {
     public static ScreenFader Instance { get; private set; }
+    /// <summary>True while the screen is fully covered (the start of every scene).</summary>
+    public static bool Opaque => Instance != null && Instance.overlay != null && Instance.overlay.color.a > 0.95f;
 
     Image overlay;
     bool isLoading;

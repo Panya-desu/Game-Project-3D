@@ -63,6 +63,25 @@ public class PlayerBody : MonoBehaviour
             r.renderingLayerMask = ShadowFocus.BodyLayer; // only the nearest lamp draws her shadow
         }
         lastPos = transform.position;
+        WarmUpShaders(root);
+    }
+
+    /// <summary>
+    /// The first time the character is drawn under a level's lights, her toon shader variants are built,
+    /// which stalled the first cutscene frame by ~0.4 s. While the scene still starts behind the black
+    /// fade, she is drawn once in front of the camera so that work is done before anyone can see.
+    /// </summary>
+    void WarmUpShaders(Transform root)
+    {
+        var cam = GetComponentInChildren<Camera>();
+        if (cam == null || !ScreenFader.Opaque) return;
+        var rends = root.GetComponentsInChildren<Renderer>(true);
+        Vector3 local = root.localPosition;
+        root.position = cam.transform.position + cam.transform.forward * 2.5f - Vector3.up * 1.2f * root.lossyScale.y;
+        foreach (var r in rends) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        cam.Render(); // one extra frame, drawn behind the black fade
+        foreach (var r in rends) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+        root.localPosition = local;
     }
 
     void Update()

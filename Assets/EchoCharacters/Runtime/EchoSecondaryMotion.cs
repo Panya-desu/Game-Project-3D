@@ -18,6 +18,11 @@ namespace EchoCharacters
         [Range(0, 2)] public float sleeveMaxAngle = 1.1f;
         [Range(0, 1)] public float collarMaxAngle = .25f;
         public float torsoRadius = .095f, upperArmRadius = .044f;
+        /// <summary>Exact shirt-over-skirt checks every frame (re-skins the skirt and ray-tests every triangle):
+        /// about 40 ms per character, meant for validation. Off in the game: the authored clips already keep the
+        /// blouse over the skirt and the extra shirt swing is a few degrees.</summary>
+        public bool layerGuard = false;
+        bool guardReady;
         public float LastShirtBend { get; private set; }
         public float MaxShirtProbeDisplacement { get; private set; }
         public int LayerContactFrames { get; private set; }
@@ -156,7 +161,7 @@ namespace EchoCharacters
             }
             joints.Sort((a, b) => Depth(a.bone).CompareTo(Depth(b.bone)));
             previousRoot = transform.position;
-            SetupShirtGuard();
+            guardReady = false; // the cloth probes are only prepared when layerGuard is on (about 0.5 s of work)
         }
         static int Depth(Transform t) { int n = 0; while (t.parent) { n++; t = t.parent; } return n; }
         void Update()
@@ -200,6 +205,8 @@ namespace EchoCharacters
                 j.bone.rotation = Quaternion.FromToRotation(animated, direction) * j.bone.rotation;
                 LastBend = Mathf.Max(LastBend, Vector3.Angle(animated, direction));
             }
+            if(!layerGuard){UpdateShirt(dt,teleport);return;}
+            if(!guardReady){SetupShirtGuard();guardReady=true;}
             UpdateSkirtSurface(); CaptureShirtReferences();
             UpdateShirt(dt,teleport);
             if(!LayersSafe())
@@ -338,12 +345,13 @@ namespace EchoCharacters
                 if(angle>limit)direction=Vector3.Slerp(animated,direction,limit/angle).normalized;
                 Quaternion proposed=Quaternion.FromToRotation(animated,direction)*rotation;
                 bool accepted=false;
-                foreach(float fraction in new[]{1f,.5f,.25f,.125f,0f})
+                if(!layerGuard){j.bone.rotation=proposed;accepted=true;}
+                else foreach(float fraction in new[]{1f,.5f,.25f,.125f,0f})
                 {j.bone.rotation=Quaternion.Slerp(rotation,proposed,fraction);if(SafeShirt(j)){accepted=true;break;}}
                 if(!accepted)j.bone.rotation=rotation;
                 j.previous=j.tip;j.tip=head+j.bone.TransformDirection(j.axis).normalized*length;
                 LastShirtBend=Mathf.Max(LastShirtBend,Quaternion.Angle(rotation,j.bone.rotation));
-                foreach(var p in j.probes)MaxShirtProbeDisplacement=Mathf.Max(MaxShirtProbeDisplacement,Vector3.Distance(SkinPoint(p.vertex),p.reference));
+                if(layerGuard)foreach(var p in j.probes)MaxShirtProbeDisplacement=Mathf.Max(MaxShirtProbeDisplacement,Vector3.Distance(SkinPoint(p.vertex),p.reference));
             }
         }
         bool LayersSafe()
