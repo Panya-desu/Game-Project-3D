@@ -36,6 +36,9 @@ public class LabDriver : MonoBehaviour
         else if (task == "perf") yield return Perf();
         else if (task == "spawn") yield return SpawnCost();
         else if (task == "ui") yield return UiDump();
+        else if (task == "shadowwalk") yield return ShadowWalk();
+        else if (task == "chin") yield return Chin();
+        else if (task == "wakeface") yield return WakeFace();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -83,6 +86,126 @@ public class LabDriver : MonoBehaviour
             }
             i++;
             yield return null;
+        }
+    }
+
+    /// <summary>The real waking cutscene: frames from its own camera every 0.4 s, cropped around her head.</summary>
+    IEnumerator WakeFace()
+    {
+        // the driver starts after the cutscene began; grab while it plays
+        int n = 0;
+        for (float t = 0f; t < 12f && n < 24; t += 0.4f)
+        {
+            yield return new WaitForSeconds(0.4f);
+            var cam = FindObjectsByType<Camera>(FindObjectsSortMode.None).FirstOrDefault(c => c.enabled && c.gameObject.activeInHierarchy && c.targetTexture == null);
+            var view = FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).FirstOrDefault(v => v.transform.root.GetComponent<Movement>() == null);
+            if (cam == null || view == null) continue;
+            // LAB_KEY=off|side|<x,y,z>: try another place for her key light
+            string keyVariant = System.Environment.GetEnvironmentVariable("LAB_KEY");
+            var key = view.transform.root.Find("KeyLight");
+            if (key != null && !string.IsNullOrEmpty(keyVariant))
+            {
+                if (keyVariant == "off") key.gameObject.SetActive(false);
+                else
+                {
+                    var f = keyVariant.Split(',');
+                    key.localPosition = new Vector3(float.Parse(f[0]), float.Parse(f[1]), float.Parse(f[2]));
+                    key.LookAt(view.transform.root.TransformPoint(new Vector3(0f, 1.25f, 0f)));
+                }
+            }
+            var anim = view.GetComponentInParent<Animator>() ?? view.transform.root.GetComponentInChildren<Animator>();
+            var headBone = anim != null && anim.isHuman ? anim.GetBoneTransform(HumanBodyBones.Head) : null;
+            if (headBone == null) continue;
+            const int w = 1920, h = 1080;
+            var rt = new RenderTexture(w, h, 24) { antiAliasing = 4 };
+            var prev = cam.targetTexture;
+            // LAB_TELE=k: the same framing from k times further with a narrower lens
+            Vector3 camPos0 = cam.transform.position; float fov0 = cam.fieldOfView;
+            if (float.TryParse(System.Environment.GetEnvironmentVariable("LAB_TELE"), out float tele) && tele > 1f)
+            {
+                float dist = Vector3.Dot(headBone.position - camPos0, cam.transform.forward);
+                cam.transform.position = camPos0 - cam.transform.forward * dist * (tele - 1f);
+                cam.fieldOfView = 2f * Mathf.Atan(Mathf.Tan(fov0 * 0.5f * Mathf.Deg2Rad) / tele) * Mathf.Rad2Deg;
+            }
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = prev;
+            cam.transform.position = camPos0; cam.fieldOfView = fov0;
+            RenderTexture.active = rt;
+            var full = new Texture2D(w, h, TextureFormat.RGB24, false);
+            full.ReadPixels(new Rect(0, 0, w, h), 0, 0); full.Apply();
+            RenderTexture.active = null; rt.Release();
+            Vector3 sp = cam.WorldToViewportPoint(headBone.position);
+            float headPx = Mathf.Abs(cam.WorldToViewportPoint(headBone.position + cam.transform.up * 0.5f * view.transform.root.lossyScale.y).y - sp.y) * h;
+            int size = Mathf.Clamp(Mathf.RoundToInt(headPx * 1.6f), 64, h);
+            int cx = Mathf.Clamp(Mathf.RoundToInt(sp.x * w) - size / 2, 0, w - size), cy = Mathf.Clamp(Mathf.RoundToInt(sp.y * h) - size / 2, 0, h - size);
+            if (sp.z <= 0f) continue;
+            var crop = new Texture2D(size, size, TextureFormat.RGB24, false);
+            crop.SetPixels(full.GetPixels(cx, cy, size, size)); crop.Apply();
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, $"wake_{n:00}.jpg"), crop.EncodeToJPG(92));
+            Debug.Log($"[Lab] wake frame {n} t={Time.time:F1} cam={cam.name} fov={cam.fieldOfView:F0} camPos={cam.transform.position} head={headBone.position} headLocalRot={headBone.localEulerAngles} size={size}");
+            n++;
+            Destroy(full); Destroy(crop); Destroy(rt);
+        }
+    }
+
+    /// <summary>Close-ups of her face where the waking cutscene stands her, under the bedroom lamps, with variants.</summary>
+    IEnumerator Chin()
+    {
+        yield return new WaitForSeconds(2f);
+        for (float t = 0f; t < 40f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(30f);
+        cam.clearFlags = CameraClearFlags.Skybox;
+        UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = true;
+        Vector3 feet = CharacterLibrary.GroundBelow(new Vector3(0.6f, 2f, 1.5f));
+        if (mover != null) feet = CharacterLibrary.GroundBelow(mover.transform.position);
+        Vector3 toRoom = Vector3.ProjectOnPlane(new Vector3(0.2f, 0f, 4.1f) - feet, Vector3.up).normalized;
+        var hero = CharacterLibrary.Spawn(false, feet, toRoom);
+        hero.transform.root.position = feet;
+        float sc = PlayerAvatar.ModelScale;
+        Vector3 head = feet + Vector3.up * 1.4f * sc;
+        cam.transform.position = head + toRoom * 1.6f + Vector3.up * 0.05f;
+        cam.transform.LookAt(head - Vector3.up * 0.12f * sc);
+        yield return new WaitForSeconds(1f);
+        var rends = hero.transform.root.GetComponentsInChildren<Renderer>();
+        Shot(cam, "chin_a_now", 700, 700);
+        foreach (var r in rends) foreach (var m in r.materials) if (m.name.ToLower().Contains("body")) m.SetFloat("_ShadowStrength", 0f);
+        yield return null;
+        Shot(cam, "chin_b_skin_no_shadow", 700, 700);
+        foreach (var r in rends) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        yield return null;
+        Shot(cam, "chin_c_no_self_shadow", 700, 700);
+        foreach (var r in rends) foreach (var m in r.materials) if (m.name.ToLower().Contains("body")) m.SetFloat("_ShadeAmount", 0.35f);
+        yield return null;
+        Shot(cam, "chin_d_less_shade", 700, 700);
+        foreach (var r in rends) Debug.Log($"[Lab] hero renderer {r.name} mats={string.Join(",", r.sharedMaterials.Select(m => m.name))}");
+    }
+
+    /// <summary>Walks the player across the living room and photographs her shadow at each step.</summary>
+    IEnumerator ShadowWalk()
+    {
+        yield return new WaitForSeconds(4f);
+        for (float t = 0f; t < 40f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        var focus = mover != null ? mover.GetComponent<ShadowFocus>() : null;
+        if (focus == null) { Debug.Log("[Lab] no player/ShadowFocus"); yield break; }
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(60f);
+        cam.clearFlags = CameraClearFlags.Skybox;
+        var cc = mover.GetComponent<CharacterController>();
+        float y = mover.transform.position.y;
+        for (int i = 0; i < 6; i++)
+        {
+            if (cc != null) cc.enabled = false;
+            mover.transform.position = new Vector3(8f + i * 1.6f, y, 12.5f);
+            mover.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+            if (cc != null) cc.enabled = true;
+            for (float t = 0f; t < 2f; t += Time.deltaTime) yield return null;
+            Vector3 feet = mover.transform.position;
+            cam.transform.position = new Vector3(feet.x - 0.5f, feet.y + 2.9f, feet.z - 3.2f);
+            cam.transform.LookAt(new Vector3(feet.x, CharacterLibrary.GroundBelow(feet).y, feet.z));
+            Debug.Log($"[Lab] shadow step {i} at {feet} planar={focus.Planar} slope={focus.Slope} alpha={focus.Alpha:F2}");
+            Shot(cam, $"shadowwalk_{i}", 800, 600);
         }
     }
 

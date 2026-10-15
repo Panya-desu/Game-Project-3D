@@ -30,6 +30,7 @@ Shader "Echo/Toon"
         _SelfLit ("Self Lit", Range(0, 1)) = 0
         _ShadowStrength ("Received Shadow Strength", Range(0, 1)) = 0.85
         _SwayAmount ("Sway Amount", Range(0, 1)) = 0
+        _LampShadowStrength ("Lamp Shadow Strength (point/spot lamps, not the key light)", Range(0, 1)) = 1
         // the skirt marks its pixels; the thigh fill under it is only drawn where the skirt is not
         [IntRange] _StencilRef ("Stencil Ref", Range(0, 255)) = 0
         [Enum(UnityEngine.Rendering.CompareFunction)] _StencilComp ("Stencil Comp", Float) = 8
@@ -49,7 +50,7 @@ Shader "Echo/Toon"
             half4 _BaseColor, _ShadeColor, _RimColor, _SpecColor, _Emission, _OutlineColor;
             half _ShadeThreshold, _ShadeSoftness, _ShadeAmount, _AmbientStrength;
             half _RimStrength, _RimPower, _SpecStrength, _SpecThreshold, _OutlineWidth;
-            half _OutlineDepthOffset, _SelfLit, _ShadowStrength, _SwayAmount;
+            half _OutlineDepthOffset, _SelfLit, _ShadowStrength, _SwayAmount, _LampShadowStrength;
         CBUFFER_END
 
         // set per renderer by HairSway (MaterialPropertyBlock): xyz anchor + w length, and the lagging offset
@@ -165,7 +166,11 @@ Shader "Echo/Toon"
                 #endif
                 LIGHT_LOOP_BEGIN(lightCount)
                     Light l = GetAdditionalLight(lightIndex, i.positionWS, half4(1, 1, 1, 1));
-                    color += Toon(albedo, n, v, l, l.shadowAttenuation);
+                    // the character key light (CharacterKeyLight, its own rendering layer) always casts its
+                    // shadow; room lamps only as much as _LampShadowStrength (their soft, offset shadows drew
+                    // a second chin on her neck)
+                    half lampShadow = (l.layerMask & 32u) != 0u ? l.shadowAttenuation : lerp(1.0h, l.shadowAttenuation, _LampShadowStrength);
+                    color += Toon(albedo, n, v, l, lampShadow);
                 LIGHT_LOOP_END
                 #endif
 

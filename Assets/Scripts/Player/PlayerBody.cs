@@ -15,6 +15,7 @@ public class PlayerBody : MonoBehaviour
     EchoCharacterView view;
     Vector3 lastPos;
     float speedSmooth;
+    bool shown = true;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Hook()
@@ -48,6 +49,7 @@ public class PlayerBody : MonoBehaviour
         view = CharacterLibrary.Spawn(false, transform.TransformPoint(new Vector3(0f, bottom, 0f)), transform.forward);
         if (view == null) return;
         var root = view.transform.root;
+        CharacterKeyLight.Remove(root.gameObject); // never lit (shadow only), and its light would fall on cutscene actors
         float scale = root.localScale.y;
         root.SetParent(transform, true);
         root.localPosition = new Vector3(0f, bottom, 0f);
@@ -87,6 +89,15 @@ public class PlayerBody : MonoBehaviour
     void Update()
     {
         if (view == null) return;
+        // hidden during cutscenes: a cutscene's own copy of her stands right here, and when this body was
+        // spawned after the cutscene had hidden the player's renderers, its shadow fell on that copy's
+        // face (a second chin under hers)
+        bool show = !CutscenePlayer.IsPlaying;
+        if (show != shown)
+        {
+            shown = show;
+            foreach (var r in view.transform.root.GetComponentsInChildren<Renderer>(true)) r.enabled = show;
+        }
         // walk/run from the real speed (the clips are in place; the controller moves her)
         Vector3 delta = transform.position - lastPos;
         lastPos = transform.position;

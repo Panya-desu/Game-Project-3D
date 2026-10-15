@@ -10,6 +10,18 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Player Body")]
     public static void PlayerBody() => Start("Assets/Scenes/Level_1.unity", "player");
 
+    [MenuItem("Tools/Dev/Lab: Wake Cutscene Face")]
+    public static void WakeFace() => Start("Assets/Scenes/Level_1.unity", "wakeface");
+
+    [MenuItem("Tools/Dev/Lab: Opening Cutscene Face (White Space)")]
+    public static void WhiteFace() => Start("Assets/Scenes/WhiteSpace.unity", "wakeface");
+
+    [MenuItem("Tools/Dev/Lab: Chin (bedroom lamps)")]
+    public static void Chin() => Start("Assets/Scenes/Level_1.unity", "chin");
+
+    [MenuItem("Tools/Dev/Lab: Player Shadow Walk")]
+    public static void ShadowWalk() => Start("Assets/Scenes/Level_1.unity", "shadowwalk");
+
     [MenuItem("Tools/Dev/Lab: Player Body (White Space)")]
     public static void PlayerBodyWhite() => Start("Assets/Scenes/WhiteSpace.unity", "player");
 

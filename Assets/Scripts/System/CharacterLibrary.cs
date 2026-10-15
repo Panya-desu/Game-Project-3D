@@ -34,6 +34,7 @@ public class CharacterLibrary : ScriptableObject
         go.transform.localScale = Vector3.one * PlayerAvatar.ModelScale; // same size as the playable character
         foreach (var r in go.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         CharacterLook.Apply(go, isDouble);
+        CharacterKeyLight.Add(go);
         return go.GetComponentInChildren<EchoCharacterView>();
     }
 

@@ -68,12 +68,12 @@ public class CharacterLook : MonoBehaviour
         Color shade = new Color(0.74f, 0.76f, 0.9f), outline = new Color(0.2f, 0.2f, 0.3f);
         float width = 0.8f, shadeAmount = 0.85f, rim = 0.3f, spec = 0f, ambient = 0.65f;
         Color emission = Color.black, rimColor = new Color(1f, 0.95f, 0.9f);
-        float selfLit = 0f, shadowStrength = 0.6f;
+        float selfLit = 0f, shadowStrength = 0.6f, lampShadow = 1f;
         Color specColor = Color.white;
 
         // palette "U1 + S1" (_work/palettes.py): soft porcelain skin with a pink shadow; blue-black hair with a
         // blue shadow, a pale-blue highlight band and a deep navy outline, in the HoYoverse manner
-        if (n.Contains("body")) { shade = new Color(0.95f, 0.8f, 0.84f); outline = new Color(0.5f, 0.28f, 0.26f); width = 0.55f; shadeAmount = 0.75f; rim = 0.22f; shadowStrength = 0.3f; }
+        if (n.Contains("body")) { shade = new Color(0.95f, 0.8f, 0.84f); outline = new Color(0.5f, 0.28f, 0.26f); width = 0.55f; shadeAmount = 0.75f; rim = 0.22f; shadowStrength = 0.3f; lampShadow = 0f; } // no lamp shadows on her skin: under a ceiling lamp the chin's shadow drew a second chin on her neck
         else if (n.Contains("hair")) { shade = new Color(0.62f, 0.66f, 0.92f); outline = new Color(0.04f, 0.05f, 0.11f); width = 0.9f; spec = 0.55f; specColor = new Color(0.72f, 0.8f, 1f); shadowStrength = 0.45f; }
         else if (n.Contains("eye")) { shadeAmount = 0.15f; width = 0f; rim = 0f; ambient = 0.9f; emission = new Color(0.06f, 0.06f, 0.08f); selfLit = 0.75f; shadowStrength = 0f; }
         else if (n.Contains("ribbon")) { shade = new Color(0.78f, 0.55f, 0.62f); outline = new Color(0.35f, 0.08f, 0.12f); width = 0.6f; }
@@ -112,12 +112,72 @@ public class CharacterLook : MonoBehaviour
         m.SetFloat("_OutlineWidth", width);
         m.SetFloat("_SelfLit", selfLit);
         m.SetFloat("_ShadowStrength", shadowStrength);
+        m.SetFloat("_LampShadowStrength", lampShadow);
         m.SetFloat("_SwayAmount", 0f); // v4 bones supply secondary motion
         cache[key] = m;
         return m;
     }
 
-    void Awake() => animator = GetComponent<Animator>();
+    void Awake()
+    {
+        animator = GetComponent<Animator>();
+        SmoothChinSeam();
+    }
+
+    static readonly Dictionary<Mesh, Mesh> smoothed = new Dictionary<Mesh, Mesh>();
+
+    /// <summary>
+    /// Her face is skinned 100% to the head bone, but the neck right under the chin only ~45%, so the
+    /// weight jumped from 0.45 to 1 at the jaw line: whenever the head turned (LookAround turns it ~30
+    /// degrees) the skin folded along that seam into a second chin and the jaw looked bent. The head
+    /// weight of the blended neck skin is rescaled so it rises smoothly to 1 at the jaw (the neck below
+    /// still blends into the shoulders). Done once per mesh, on a copy; the asset is untouched.
+    /// </summary>
+    void SmoothChinSeam()
+    {
+        if (animator == null || !animator.isHuman) return;
+        var head = animator.GetBoneTransform(HumanBodyBones.Head);
+        if (head == null || head.parent == null) return;
+        Transform neck = head.parent;
+        foreach (var smr in transform.root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            var src = smr.sharedMesh;
+            if (src == null) continue;
+            if (smoothed.TryGetValue(src, out var done)) { if (done != null) smr.sharedMesh = done; continue; }
+            int hi = System.Array.IndexOf(smr.bones, head), ni = System.Array.IndexOf(smr.bones, neck);
+            smoothed[src] = null;
+            if (hi < 0 || ni < 0 || !src.isReadable) continue;
+            var bw = src.boneWeights;
+            float top = 0f; // the highest head weight on the blended neck skin (just under the jaw)
+            foreach (var b in bw) if (Weight(b, ni) > 0.01f) top = Mathf.Max(top, Weight(b, hi));
+            if (top <= 0.05f || top >= 0.95f) continue;
+            for (int i = 0; i < bw.Length; i++)
+            {
+                float wh = Weight(bw[i], hi), wn = Weight(bw[i], ni);
+                if (wh <= 0f || wn <= 0.01f) continue;
+                float t = Mathf.Clamp01(wh / top);
+                float target = Mathf.Min(wh + wn, Mathf.Lerp(wh, 1f, t * t)); // only the top of the band moves much
+                bw[i] = SetWeights(bw[i], hi, target, ni, wh + wn - target);
+            }
+            var copy = Instantiate(src);
+            copy.name = src.name + " (smooth chin)";
+            copy.boneWeights = bw;
+            smoothed[src] = copy;
+            smr.sharedMesh = copy;
+        }
+    }
+
+    static float Weight(BoneWeight b, int i) =>
+        (b.boneIndex0 == i ? b.weight0 : 0f) + (b.boneIndex1 == i ? b.weight1 : 0f) + (b.boneIndex2 == i ? b.weight2 : 0f) + (b.boneIndex3 == i ? b.weight3 : 0f);
+
+    static BoneWeight SetWeights(BoneWeight b, int hi, float wh, int ni, float wn)
+    {
+        if (b.boneIndex0 == hi) b.weight0 = wh; else if (b.boneIndex0 == ni) b.weight0 = wn;
+        if (b.boneIndex1 == hi) b.weight1 = wh; else if (b.boneIndex1 == ni) b.weight1 = wn;
+        if (b.boneIndex2 == hi) b.weight2 = wh; else if (b.boneIndex2 == ni) b.weight2 = wn;
+        if (b.boneIndex3 == hi) b.weight3 = wh; else if (b.boneIndex3 == ni) b.weight3 = wn;
+        return b;
+    }
 
     /// <summary>Look at a point (null to look ahead again).</summary>
     public void LookAt(Vector3? point) { lookPoint = point; lookTarget = null; }
