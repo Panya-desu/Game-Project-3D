@@ -52,6 +52,8 @@ public class PlaceItemInteractable : Interactable, ISaveable
         if (SaveSystem.TryLoad(this, out SaveState state) && state.placed)
         {
             isPlaced = true;
+        GameAudio.PlaySfx("fuse_insert");
+        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
             if (disableAfterPlace)
             {
                 canInteract = false;
@@ -86,6 +88,7 @@ public class PlaceItemInteractable : Interactable, ISaveable
         if (!ItemPickup.HasItem(requiredItemID))
         {
             Debug.Log("[PlaceItemInteractable] Player doesn't have item: " + requiredItemID);
+            GameAudio.PlaySfx("door_locked", 0.6f);
             return;
         }
 

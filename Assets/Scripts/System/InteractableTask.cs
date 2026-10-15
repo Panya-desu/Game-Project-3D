@@ -13,7 +13,8 @@ public class InteractableTask : Interactable
 
     public override void Interact()
     {
-        if (taskData.isCompleted) return;
+        // Not assigned yet (the task list starts after the intro dialogue) or already done
+        if (taskData == null || taskManager == null || taskData.isCompleted) return;
 
         canInteract = false;
 

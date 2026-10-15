@@ -47,6 +47,7 @@ public class RevealInteractable : Interactable, ISaveable
         {
             targetObject.SetActive(true);
             isRevealed = true;
+            GameAudio.PlaySfx("reveal");
             Debug.Log("[RevealInteractable] Revealed: " + targetObject.name);
         }
         else

@@ -28,7 +28,9 @@ public class KeyPickup : Interactable, ISaveable
         // เก็บไปแล้วใน save → ซ่อน
         if (SaveSystem.TryLoad(this, out SaveState state) && !state.active)
         {
-            gameObject.SetActive(false);
+            GameAudio.PlaySfx("pickup");
+        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
+        gameObject.SetActive(false);
         }
     }
 

@@ -16,6 +16,7 @@ public class TaskManager : MonoBehaviour
     private bool allTasksDone = false;
     private int completedTasks = 0;
     private bool hasStartedTasks = false;
+    private bool nextQuestPending = false;
 
     void Start()
     {
@@ -69,9 +70,11 @@ public class TaskManager : MonoBehaviour
         if (allTasksDone) return;
         allTasksDone = true;
 
-        if (dialogueManager != null && quests[currentQuestIndex].afterDialogue != null)
+        DialogueLine[] after = quests[currentQuestIndex].afterDialogue;
+        bool hasDialogue = dialogueManager != null && after != null && after.Length > 0;
+        if (hasDialogue)
         {
-            dialogueManager.StartDialogue(quests[currentQuestIndex].afterDialogue);
+            dialogueManager.StartDialogue(after);
         }
 
         currentQuestIndex++;
@@ -79,6 +82,12 @@ public class TaskManager : MonoBehaviour
         if (currentQuestIndex < quests.Count)
         {
             allTasksDone = false;
+            nextQuestPending = true;
+            // The next quest is normally loaded when the dialogue ends; without dialogue load it now
+            if (!hasDialogue)
+            {
+                LoadNextQuest();
+            }
         }
         else
         {
@@ -104,8 +113,10 @@ public class TaskManager : MonoBehaviour
 
     public void LoadNextQuest()
     {
-        if (currentQuestIndex < quests.Count)
+        // Called after every dialogue; only advance when a quest was actually finished
+        if (nextQuestPending && currentQuestIndex < quests.Count)
         {
+            nextQuestPending = false;
             LoadQuest(currentQuestIndex);
         }
     }
@@ -118,6 +129,12 @@ public class TaskManager : MonoBehaviour
             foreach (TaskData task in currentTasks)
             {
                 task.isCompleted = false;
+
+                if (task.targetObject == null)
+                {
+                    Debug.LogWarning("[TaskManager] Task '" + task.taskName + "' has no target object");
+                    continue;
+                }
 
                 InteractableTask interact = task.targetObject.GetComponent<InteractableTask>();
                 if (interact != null)

@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3965f0d77df6bd444b924c0d600852f7, type: 3}
+  m_Name: CharacterLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterLibrary
+  protagonist: {fileID: 4077164098787559507, guid: 982f24dbe83791f4fa21c5be95d52ee8, type: 3}
+  theDouble: {fileID: 3844783897090195131, guid: b0f9d0e4993e98a45844be805aa2274e, type: 3}
+  toonShader: {fileID: 4800000, guid: 1adccb6d7c0297242b5e4098e8aa4d04, type: 3}

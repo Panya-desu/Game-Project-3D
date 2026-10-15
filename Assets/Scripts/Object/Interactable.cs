@@ -11,4 +11,10 @@ public class Interactable : MonoBehaviour
 
         Debug.Log("Interacted with " + gameObject.name);
     }
+
+    /// <summary>Lets UnityEvents (quest start/complete) switch an object on or off.</summary>
+    public void SetInteractable(bool value)
+    {
+        canInteract = value;
+    }
 }

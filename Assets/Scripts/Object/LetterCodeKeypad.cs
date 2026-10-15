@@ -102,6 +102,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
     {
         isEnteringCode = true;
         KeypadInteractable.IsEnteringKeypad = true;
+        GameHud.SetHint("Type the code with the number keys  |  Enter = confirm  |  Backspace = delete  |  Esc = cancel");
         currentInput = "";
         UpdateDisplay();
 
@@ -114,6 +115,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
     {
         isEnteringCode = false;
         KeypadInteractable.IsEnteringKeypad = false;
+        GameHud.SetHint("");
         ResetDisplay();
 
         // Lock cursor back to gameplay mode
@@ -128,6 +130,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
         // Cancel with Escape
         if (Input.GetKeyDown(KeyCode.Escape))
         {
+            GameState.ConsumeEscape();
             StopCodeEntry();
             return;
         }
@@ -140,6 +143,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
                 if (currentInput.Length < correctCode.Length)
                 {
                     currentInput += c;
+                    GameAudio.PlaySfx("keypad_beep", 0.7f, 0.05f);
                     UpdateDisplay();
                 }
             }
@@ -175,6 +179,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
             // Only unlock the door — player must open it themselves
             if (interactiveDoor != null)
             {
+                GameAudio.PlaySfx("unlock");
                 interactiveDoor.Unlock();
             }
 
@@ -195,6 +200,7 @@ public class LetterCodeKeypad : Interactable, ISaveable
             if (displayText != null)
             {
                 displayText.text = errorText;
+                GameAudio.PlaySfx("error");
             }
 
             yield return new WaitForSeconds(feedbackDelay);

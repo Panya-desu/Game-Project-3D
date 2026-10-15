@@ -7,30 +7,59 @@ public class PlayerInteract : MonoBehaviour
     public TextMeshProUGUI interactText;
     public DialogueManager dialogueManager;
 
+    Camera cam;
+
+    /// <summary>True while the player is looking at something they can press E on (used by the crosshair).</summary>
+    public static bool IsAimingAtInteractable { get; private set; }
+
+    void Start()
+    {
+        cam = GetComponent<Camera>();
+        if (cam == null) cam = Camera.main;
+    }
+
+    void OnDisable()
+    {
+        IsAimingAtInteractable = false;
+    }
+
+    void SetPrompt(string text)
+    {
+        IsAimingAtInteractable = !string.IsNullOrEmpty(text);
+        if (interactText != null) interactText.text = text;
+    }
+
     void Update()
     {
-        if (dialogueManager != null && dialogueManager.IsTalking())
+        if (GameState.InputBlockedOrTalking || (dialogueManager != null && dialogueManager.IsTalking()))
         {
-            interactText.text = "";
+            SetPrompt("");
             return;
         }
 
-        if (KeypadInteractable.IsEnteringKeypad || PauseMenu.IsPaused)
+        if (cam == null)
         {
-            interactText.text = "";
-            return;
+            cam = Camera.main;
+            if (cam == null) return;
         }
 
-        if (PhoneManager.IsPhoneOpen)
+        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+
+        // nearest hit that is not the player itself
+        Transform self = cam.transform.root;
+        RaycastHit hit = default;
+        bool found = false;
+        // Ignore trigger volumes (area triggers would otherwise block the ray)
+        var hits = Physics.RaycastAll(ray, interactDistance, ~0, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
+        foreach (var h in hits)
         {
-            interactText.text = "";
-            return;
+            if (h.collider.transform.root == self) continue;
+            hit = h; found = true;
+            break;
         }
 
-        Ray ray = new Ray(Camera.main.transform.position, Camera.main.transform.forward);
-        RaycastHit hit;
-
-        if (Physics.Raycast(ray, out hit, interactDistance))
+        if (found)
         {
             Interactable[] interactables = hit.collider.GetComponents<Interactable>();
             if (interactables.Length > 0)
@@ -47,7 +76,7 @@ public class PlayerInteract : MonoBehaviour
 
                 if (primaryInteractable != null)
                 {
-                    interactText.text = primaryInteractable.interactText;
+                    SetPrompt(primaryInteractable.interactText);
 
                     if (Input.GetKeyDown(KeyCode.E))
                     {
@@ -62,12 +91,12 @@ public class PlayerInteract : MonoBehaviour
                 }
                 else
                 {
-                    interactText.text = "";
+                    SetPrompt("");
                 }
 
                 return;
             }
         }
-        interactText.text = "";
+        SetPrompt("");
     }
 }

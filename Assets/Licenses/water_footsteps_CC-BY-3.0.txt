@@ -1,0 +1,9 @@
+Derived from Water Footsteps by EminYILDIRIM
+https://freesound.org/people/EminYILDIRIM/sounds/608663/
+
+And footstep-concrete.wav by swuing
+http://www.freesound.org/people/swuing/sounds/38873/
+
+http://creativecommons.org/licenses/by/3.0/
+
+Used as Assets/Resources/Audio/water_step_1..5.ogg (from "Footsteps on different surfaces" by congusbongus, OpenGameArt, CC-BY 3.0: https://opengameart.org/content/footsteps-on-different-surfaces)

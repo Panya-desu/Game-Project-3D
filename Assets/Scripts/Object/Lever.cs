@@ -79,12 +79,14 @@ public class Lever : Interactable
         if (!IsPowered())
         {
             Debug.Log($"[Lever] {name}: No power, place all fuses first");
+            GameAudio.PlaySfx("door_locked", 0.6f);
             return;
         }
 
         IsPulled = true;
         canInteract = false;
         SetTurn(true);
+        GameAudio.PlaySfx("lever_pull");
 
         if (puzzle != null)
         {

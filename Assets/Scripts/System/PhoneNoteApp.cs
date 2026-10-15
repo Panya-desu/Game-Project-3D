@@ -14,7 +14,7 @@ public class PhoneNoteApp : MonoBehaviour
     [SerializeField] private Button openNoteAppButton;
     [SerializeField] private Button backToMainButton;
 
-    private const string NotePrefsKey = "PhoneNoteData";
+    public const string NotePrefsKey = "PhoneNoteData";
 
     private void Start()
     {

@@ -20,6 +20,9 @@ public class QuestManager : MonoBehaviour, ISaveable
     [Header("UI")]
     [SerializeField] private TextMeshProUGUI questText;
 
+    static readonly System.Text.RegularExpressions.Regex CounterPattern =
+        new System.Text.RegularExpressions.Regex(@"^(.*) \((\d+)/(\d+)\)$");
+
     [Header("Quest List")]
     public List<QuestData> quests;
 
@@ -28,13 +31,26 @@ public class QuestManager : MonoBehaviour, ISaveable
     [Header("References")]
     [SerializeField] private DialogueManager dialogueManager;
 
+    public static QuestManager Instance { get; private set; }
+
     private int currentQuestIndex = -1;
     private int completedObjectives = 0;
     private bool hasStarted = false;
     private bool allQuestsComplete = false;
 
+    void Awake()
+    {
+        Instance = this;
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
     void Start()
     {
+        if (questText != null) UiTheme.Style(questText, false, questText.fontSize, UiTheme.Pearl, 0.65f);
         if (questText != null)
         {
             questText.text = "";
@@ -131,6 +147,37 @@ public class QuestManager : MonoBehaviour, ISaveable
 
         // Check UnlockPhone objectives automatically each frame
         CheckPhoneObjectives();
+
+        // Custom objectives the player may already have done before the quest started
+        CheckSatisfiedObjectives();
+    }
+
+    /// <summary>
+    /// A Custom objective counts as done when its target shows the job is finished:
+    /// a picked-up item/key (object hidden), a placed fuse, a key door that is open, a solved lever puzzle.
+    /// This makes the quest list robust to the player solving things out of order.
+    /// </summary>
+    private void CheckSatisfiedObjectives()
+    {
+        if (currentQuestIndex < 0 || currentQuestIndex >= quests.Count) return;
+
+        foreach (QuestObjective obj in quests[currentQuestIndex].objectives)
+        {
+            if (obj.isCompleted || obj.type != ObjectiveType.Custom || obj.targetObject == null) continue;
+
+            GameObject t = obj.targetObject;
+            bool done =
+                (!t.activeInHierarchy && (t.GetComponent<ItemPickup>() != null || t.GetComponent<KeyPickup>() != null)) ||
+                (t.TryGetComponent(out PlaceItemInteractable place) && place.IsPlaced) ||
+                (t.TryGetComponent(out KeyDoorInteractable keyDoor) && t.TryGetComponent(out InteractiveDoor door) && !door.IsLocked()) ||
+                (t.TryGetComponent(out LeverPuzzle levers) && levers.IsSolved);
+
+            if (done)
+            {
+                CompleteObjective(obj);
+                return;
+            }
+        }
     }
 
     /// <summary>
@@ -150,6 +197,9 @@ public class QuestManager : MonoBehaviour, ISaveable
     public void CompleteObjective(QuestObjective objective)
     {
         if (objective.isCompleted) return;
+        // Ignore objectives of other quests (objects reused by several quests, late events)
+        if (currentQuestIndex < 0 || currentQuestIndex >= quests.Count) return;
+        if (!quests[currentQuestIndex].objectives.Contains(objective)) return;
 
         objective.isCompleted = true;
         completedObjectives++;
@@ -168,6 +218,15 @@ public class QuestManager : MonoBehaviour, ISaveable
     /// Complete an objective by finding it via its target GameObject.
     /// Useful for completing objectives from external scripts (e.g., KeypadInteractable).
     /// </summary>
+    /// <summary>Inspector-friendly name for UnityEvents (AreaTrigger, keypads, ...).</summary>
+    public void CompleteObjectiveForTarget(GameObject target)
+    {
+        CompleteObjectiveByTarget(target);
+    }
+
+    public string CurrentQuestName =>
+        (currentQuestIndex >= 0 && currentQuestIndex < quests.Count) ? quests[currentQuestIndex].questName : "";
+
     public void CompleteObjectiveByTarget(GameObject target)
     {
         if (currentQuestIndex < 0 || currentQuestIndex >= quests.Count) return;
@@ -221,6 +280,7 @@ public class QuestManager : MonoBehaviour, ISaveable
 
         UpdateUI();
         Debug.Log("[QuestManager] Started quest: " + quest.questName);
+        quest.onStart?.Invoke();
     }
 
     private void CheckDoorObjectives()
@@ -237,6 +297,7 @@ public class QuestManager : MonoBehaviour, ISaveable
             if (door != null && !door.IsLocked())
             {
                 CompleteObjective(obj);
+                return; // the quest may have advanced; check again next frame
             }
         }
     }
@@ -253,6 +314,7 @@ public class QuestManager : MonoBehaviour, ISaveable
             if (PhoneManager.Instance != null && !PhoneManager.Instance.IsLocked)
             {
                 CompleteObjective(obj);
+                return;
             }
         }
     }
@@ -262,6 +324,8 @@ public class QuestManager : MonoBehaviour, ISaveable
         QuestData quest = quests[currentQuestIndex];
 
         Debug.Log("[QuestManager] Quest complete: " + quest.questName);
+        GameAudio.PlaySfx("quest_complete", 0.6f);
+        quest.onComplete?.Invoke();
 
         // Play after-complete dialogue if available
         if (dialogueManager != null && quest.afterCompleteDialogue != null && quest.afterCompleteDialogue.Length > 0)
@@ -294,15 +358,37 @@ public class QuestManager : MonoBehaviour, ISaveable
         QuestData quest = quests[currentQuestIndex];
         string text = "Quest : " + quest.questName + "\n";
 
+        // Objectives named like "Find a spare fuse (1/3)", "(2/3)", "(3/3)" form one counter:
+        // shown once as "Find a spare fuse (0/3)" and counting up as they are completed
+        var counted = new System.Collections.Generic.HashSet<string>();
         foreach (QuestObjective obj in quest.objectives)
         {
-            if (obj.isCompleted)
+            string line = obj.description;
+            bool done = obj.isCompleted;
+            var m = CounterPattern.Match(obj.description ?? "");
+            if (m.Success)
             {
-                text += "<color=grey><s>- " + obj.description + "</s></color>\n";
+                string baseText = m.Groups[1].Value;
+                if (!counted.Add(baseText)) continue;
+                int total = 0, finished = 0;
+                foreach (QuestObjective other in quest.objectives)
+                {
+                    var o = CounterPattern.Match(other.description ?? "");
+                    if (!o.Success || o.Groups[1].Value != baseText) continue;
+                    total++;
+                    if (other.isCompleted) finished++;
+                }
+                line = $"{baseText} ({finished}/{total})";
+                done = finished == total;
+            }
+
+            if (done)
+            {
+                text += "<color=grey><s>- " + line + "</s></color>\n";
             }
             else
             {
-                text += "- " + obj.description + "\n";
+                text += "- " + line + "\n";
             }
         }
 

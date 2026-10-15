@@ -57,6 +57,9 @@ public class PhoneManager : MonoBehaviour, ISaveable
             hasPhone = state.hasPhone;
             isLocked = state.isLocked;
         }
+
+        PhoneSkin.Apply(phonePanel, lockScreenPanel);
+        if (notificationText != null) UiTheme.Style(notificationText, true, notificationText.fontSize, UiTheme.Pearl, 0.6f);
     }
 
     public string CaptureState()
@@ -96,13 +99,28 @@ public class PhoneManager : MonoBehaviour, ISaveable
     private void Update()
     {
         // Don't allow using phone during dialogue or keypad code entries
-        if (KeypadInteractable.IsEnteringKeypad || PauseMenu.IsPaused)
+        if (KeypadInteractable.IsEnteringKeypad || PauseMenu.IsPaused || GameState.IsCutscene)
             return;
 
         if (isPhoneOpen)
         {
             UpdateTimeAndDate();
+
+            // Esc closes the phone (and must not also open the pause menu)
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                GameState.ConsumeEscape();
+                ClosePhone();
+                return;
+            }
         }
+
+        // Typing the letter F in the Note app must not close the phone
+        if (IsTypingInField())
+            return;
+
+        if (!isPhoneOpen && DialogueManager.IsAnyTalking)
+            return;
 
         if (Input.GetKeyDown(KeyCode.F))
         {
@@ -112,14 +130,24 @@ public class PhoneManager : MonoBehaviour, ISaveable
             }
             else
             {
-                ShowNotification("dont have phone");
+                ShowNotification("You don't have a phone yet");
             }
         }
+    }
+
+    private bool IsTypingInField()
+    {
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es == null || es.currentSelectedGameObject == null) return false;
+        var field = es.currentSelectedGameObject.GetComponent<TMP_InputField>();
+        // The numeric lock screen still lets F close the phone; free-text fields (Note app) do not
+        return field != null && field.isFocused && field != passwordInputField;
     }
 
     public void CollectPhone()
     {
         hasPhone = true;
+        GameAudio.PlaySfx("pickup");
         ShowNotification("Collected Phone! Press F to use.");
     }
 
@@ -138,6 +166,7 @@ public class PhoneManager : MonoBehaviour, ISaveable
     private void OpenPhone()
     {
         isPhoneOpen = true;
+        GameAudio.PlaySfx("phone_open");
 
         // Show the panel and enable the Animator, then trigger the open animation
         if (phonePanel != null)
@@ -159,6 +188,12 @@ public class PhoneManager : MonoBehaviour, ISaveable
     private void ClosePhone()
     {
         isPhoneOpen = false;
+        GameAudio.PlaySfx("phone_close");
+        if (UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            // Drop focus from the Note/password field so keyboard input goes back to the game
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
+        }
 
         // Trigger the close animation
         if (phoneAnimator != null)
@@ -241,6 +276,7 @@ public class PhoneManager : MonoBehaviour, ISaveable
         if (input == lockPassword)
         {
             isLocked = false;
+            GameAudio.PlaySfx("unlock");
             ShowNotification("Phone unlocked");
             UpdateScreenState();
         }

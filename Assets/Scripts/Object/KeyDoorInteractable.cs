@@ -71,7 +71,9 @@ public class KeyDoorInteractable : Interactable, ISaveable
 
         // มีกุญแจ → unlock!
         isUnlocked = true;
+        GameAudio.PlaySfx("unlock");
         Debug.Log("[KeyDoorInteractable] Unlocked with key: " + requiredKeyID);
+        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
 
         // Unlock ประตู
         if (targetDoor != null)

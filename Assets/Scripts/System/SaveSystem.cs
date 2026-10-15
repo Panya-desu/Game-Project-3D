@@ -39,6 +39,7 @@ public class SaveData
     public List<string> items = new List<string>();
     public List<string> keys = new List<string>();
     public List<SaveEntry> entries = new List<SaveEntry>();
+    public float runTime = -1f; // seconds used of the 40-minute limit (RunTimer), -1 = not started
 }
 
 /// <summary>
@@ -88,7 +89,8 @@ public static class SaveSystem
             sceneName = scene.name,
             savedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             items = ItemPickup.GetAllItems(),
-            keys = KeyPickup.GetAllKeys()
+            keys = KeyPickup.GetAllKeys(),
+            runTime = RunTimer.Elapsed
         };
 
         MonoBehaviour[] behaviours = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(
@@ -132,6 +134,7 @@ public static class SaveSystem
 
         ResetRuntimeState();
 
+        RunTimer.Restore(data.runTime);
         ItemPickup.SetAllItems(data.items);
         KeyPickup.SetAllKeys(data.keys);
 
@@ -153,6 +156,8 @@ public static class SaveSystem
     public static void StartNewGame(string sceneName)
     {
         ResetRuntimeState();
+        // Notes from an earlier play-through must not appear in a new game
+        PlayerPrefs.DeleteKey(PhoneNoteApp.NotePrefsKey);
         SceneManager.LoadScene(sceneName);
     }
 
@@ -197,6 +202,8 @@ public static class SaveSystem
         ItemPickup.ClearAllItems();
         KeyPickup.ClearAllKeys();
         KeypadInteractable.IsEnteringKeypad = false;
+        GameState.IsCutscene = false;
+        RunTimer.ResetRun();
         Time.timeScale = 1f;
     }
 

@@ -46,6 +46,8 @@ public class LeverPuzzle : MonoBehaviour, ISaveable
 
     private int nextStep = 0;
     private bool solved = false;
+
+    public bool IsSolved => solved;
     private int[] symbolOrder;
 
     private void Start()
@@ -185,12 +187,15 @@ public class LeverPuzzle : MonoBehaviour, ISaveable
             doorObject.SetActive(true);
         }
 
+        if (Time.timeSinceLevelLoad > 1f) GameAudio.PlaySfx("puzzle_solved");
+        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
         Debug.Log("[LeverPuzzle] Solved!");
     }
 
     private IEnumerator ResetAll()
     {
         nextStep = 0;
+        GameAudio.PlaySfx("error");
 
         // ล็อกทุกอันระหว่างรอ กันผู้เล่นกดต่อ
         foreach (Lever lever in levers)

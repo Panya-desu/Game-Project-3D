@@ -12,6 +12,8 @@ public class Door : Interactable, ISaveable
     [Header("Door Settings")]
     [SerializeField] private string sceneName;
     [SerializeField] private bool isUnlocked = false;
+    [Tooltip("เสียงตอนเข้าประตู (ประตูไม้ = door_open, ประตูแห่งความทรงจำใน White Space = memory_whoosh)")]
+    [SerializeField] private string openSound = "door_open";
 
     private void Awake()
     {
@@ -37,6 +39,7 @@ public class Door : Interactable, ISaveable
         if (!isUnlocked)
         {
             Debug.Log("[Door] Locked");
+            GameAudio.PlaySfx("door_locked");
             return;
         }
 
@@ -47,6 +50,9 @@ public class Door : Interactable, ISaveable
         }
 
         Debug.Log("[Door] Loading scene: " + sceneName);
-        SceneManager.LoadScene(sceneName);
+        canInteract = false;
+        GameAudio.PlaySfx(openSound);
+        // Fade instead of an instant cut
+        ScreenFader.LoadScene(sceneName);
     }
 }

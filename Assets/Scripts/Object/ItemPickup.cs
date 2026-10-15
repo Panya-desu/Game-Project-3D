@@ -55,6 +55,9 @@ public class ItemPickup : Interactable, ISaveable
         collectedItems.Add(itemID);
         Debug.Log("[ItemPickup] Collected item: " + itemID);
 
+        GameAudio.PlaySfx("pickup");
+        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
+
         // หายไปจาก scene
         gameObject.SetActive(false);
     }

@@ -803,6 +803,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16a99c0de8413a9418ed13dedf8f0f2a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MainMenu
+  continueButton: {fileID: 0}
 --- !u!4 &1616601462
 Transform:
   m_ObjectHideFlags: 0
@@ -1012,9 +1013,12 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Echo of memories
+  m_text: 'End of the prototype
 
-    demo end'
+    <size=45%>You were pushed out of your memories...
+    for now.
+
+    To be continued.</size>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2100000, guid: e73a58f6e2794ae7b1b7e50b7fb811b0, type: 2}

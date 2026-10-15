@@ -1,5 +1,4 @@
 using UnityEngine;
-using System.Collections;
 
 public class InteractiveDoor : Interactable, ISaveable
 {
@@ -19,37 +18,68 @@ public class InteractiveDoor : Interactable, ISaveable
     [Header("References")]
     [SerializeField] private DoorController doorController;
 
+    public enum DoorSound { Auto, Wood, Cabinet, Metal }
+
+    [Header("Sound")]
+    [Tooltip("Auto = ดูจากชื่อ Animator Controller (ตู้/ชั้นวาง = Cabinet, ตู้ไฟ = Metal, นอกนั้น = Wood)")]
+    [SerializeField] private DoorSound sound = DoorSound.Auto;
+    [Tooltip("หน่วงเสียงกระแทกหลังบานถึงวงกบ (วินาที) ถ้ายังได้ยินก่อนเห็นให้เพิ่มค่านี้")]
+    [SerializeField] private float slamDelay = 0.03f;
+
     private bool isOpen = false;
-    private bool openOnLoad = false;
 
     private void Awake()
     {
+        if (doorController == null)
+        {
+            doorController = GetComponentInChildren<DoorController>();
+        }
+        if (doorController == null && GetComponentInChildren<Animator>() != null)
+        {
+            doorController = gameObject.AddComponent<DoorController>();
+        }
+
+        if (sound == DoorSound.Auto)
+        {
+            sound = DetectSound();
+        }
+
         if (SaveSystem.TryLoad(this, out SaveState state))
         {
             isLocked = state.locked;
-            openOnLoad = state.open;
+            isOpen = state.open;
         }
     }
 
     private void Start()
     {
-        UpdateInteractText();
-
-        if (openOnLoad)
+        // ประตูที่เปิดค้างไว้ใน save ให้อยู่ในท่าเปิดทันที ไม่ต้องเล่นแอนิเมชัน
+        if (doorController != null)
         {
-            StartCoroutine(OpenAfterLoad());
+            doorController.SetOpenImmediate(isOpen);
+            doorController.Closed += OnDoorClosed;
         }
+
+        UpdateInteractText();
     }
 
-    private IEnumerator OpenAfterLoad()
-    {
-        // รอ 1 เฟรมให้ DoorController.Start() ปิด Animator ก่อน แล้วค่อยเปิดประตู
-        yield return null;
+    private string SoundPrefix => sound == DoorSound.Cabinet ? "cabinet" : sound == DoorSound.Metal ? "metal" : "door";
 
-        if (!isOpen)
-        {
-            ToggleDoor();
-        }
+    private void OnDoorClosed()
+    {
+        StartCoroutine(PlaySlam());
+    }
+
+    // หน่วงเสียงกระแทกเล็กน้อยให้ตรงกับภาพที่บานกระแทกวงกบ (ถ้ากดเปิดกลับระหว่างรอ จะไม่เล่น)
+    private System.Collections.IEnumerator PlaySlam()
+    {
+        yield return new WaitForSeconds(slamDelay);
+        if (!isOpen) GameAudio.PlaySfx(SoundPrefix + "_close");
+    }
+
+    private void OnDestroy()
+    {
+        if (doorController != null) doorController.Closed -= OnDoorClosed;
     }
 
     public string CaptureState()
@@ -62,6 +92,7 @@ public class InteractiveDoor : Interactable, ISaveable
         if (isLocked)
         {
             Debug.Log("[InteractiveDoor] Locked!");
+            GameAudio.PlaySfx("door_locked");
             return;
         }
 
@@ -90,6 +121,9 @@ public class InteractiveDoor : Interactable, ISaveable
     public void ToggleDoor()
     {
         isOpen = !isOpen;
+        // ตอนปิด: เสียงบานพับเล่นทันที ส่วนเสียงกระแทกเล่นตอนบานถึงวงกบจริง (OnDoorClosed)
+        GameAudio.PlaySfx(SoundPrefix + (isOpen ? "_open" : "_creak"));
+        // DoorController หมุนต่อจากมุมปัจจุบัน ถ้ากดกลับระหว่างที่ยังหมุนไม่เสร็จ ประตูจะค่อยๆ หมุนกลับ
         if (doorController != null)
         {
             if (isOpen)
@@ -103,20 +137,21 @@ public class InteractiveDoor : Interactable, ISaveable
         }
         else
         {
-            Animator anim = GetComponentInChildren<Animator>();
-            if (anim != null)
-            {
-                anim.enabled = true;
-                anim.SetBool("isOpen", isOpen);
-            }
-            else
-            {
-                Debug.LogWarning("[InteractiveDoor] No DoorController or Animator found!");
-            }
+            Debug.LogWarning("[InteractiveDoor] No DoorController or Animator found!");
         }
 
         UpdateInteractText();
         Debug.Log("[InteractiveDoor] Door is now " + (isOpen ? "Open" : "Closed"));
+    }
+
+    private DoorSound DetectSound()
+    {
+        Animator anim = GetComponentInChildren<Animator>();
+        string id = (anim != null && anim.runtimeAnimatorController != null ? anim.runtimeAnimatorController.name : "") + " " + name;
+        id = id.ToLowerInvariant();
+        if (id.Contains("fuse") || id.Contains("pivot")) return DoorSound.Metal;
+        if (id.Contains("shelf") || id.Contains("realdoor") || id.Contains("cabinet")) return DoorSound.Cabinet;
+        return DoorSound.Wood;
     }
 
     private void UpdateInteractText()
