@@ -21,6 +21,20 @@ public class Movement : MonoBehaviour, ISaveable
 
     Vector3 velocity;
 
+    // the jump starts with a short wind-up (she crouches and pushes off, see PlayerBody) before leaving the ground
+    public const float JumpWindupTime = 0.1f;
+    /// <summary>True during the wind-up between pressing jump and leaving the ground.</summary>
+    public bool JumpWindup { get; private set; }
+    float windupLeft;
+
+    /// <summary>A footstep sound was played (position, strength: 1 a step, more for a push-off or a landing).</summary>
+    public static event System.Action<Vector3, float> Stepped;
+    /// <summary>Set by PlayerBody while her walking body times the footsteps (each foot coming down);
+    /// otherwise the steps keep the plain timer.</summary>
+    public bool StepsFromBody { get; set; }
+    bool wasGrounded = true;
+    float airTime, fallSpeed;
+
     [Header("Footsteps")]
     public float stepInterval = 0.5f;
     float stepTimer;
@@ -97,10 +111,21 @@ public class Movement : MonoBehaviour, ISaveable
 
         Vector3 move = Vector3.ClampMagnitude(transform.right * x + transform.forward * z, 1f);
 
-        // Jump (เฉพาะตอนอยู่บนพื้น)
-        if (grounded && Input.GetButtonDown("Jump"))
+        // Jump (เฉพาะตอนอยู่บนพื้น): a short wind-up, then the push off the ground
+        if (grounded && !JumpWindup && Input.GetButtonDown("Jump"))
         {
-            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            JumpWindup = true;
+            windupLeft = JumpWindupTime;
+        }
+        if (JumpWindup)
+        {
+            windupLeft -= Time.deltaTime;
+            if (windupLeft <= 0f)
+            {
+                JumpWindup = false;
+                velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+                Step(1.25f); // the push-off
+            }
         }
 
         // Gravity: ขาลงเพิ่มแรงโน้มถ่วงทีละน้อยแทนการตั้งค่าความเร็วทันที
@@ -110,11 +135,12 @@ public class Movement : MonoBehaviour, ISaveable
         controller.Move((move * speed + Vector3.up * velocity.y) * Time.deltaTime);
 
         UpdateFootsteps(grounded, move.magnitude);
+        UpdateLanding(controller.isGrounded);
     }
 
     void UpdateFootsteps(bool grounded, float moveAmount)
     {
-        if (!grounded || moveAmount < 0.2f)
+        if (StepsFromBody || !grounded || moveAmount < 0.2f)
         {
             stepTimer = 0f;
             return;
@@ -124,9 +150,35 @@ public class Movement : MonoBehaviour, ISaveable
         if (stepTimer <= 0f)
         {
             stepTimer = stepInterval;
-            string step = StepSound();
-            GameAudio.PlaySfx(step + Random.Range(1, step == "water_step_" ? 6 : 5), step == "water_step_" ? 0.5f : 0.35f, 0.08f);
+            Step();
         }
+    }
+
+    /// <summary>One footstep on the current ground; strength above 1 for a push-off or a landing (louder).</summary>
+    public void Step(float strength = 1f)
+    {
+        string step = StepSound();
+        bool water = step == "water_step_";
+        float volume = Mathf.Min(1f, (water ? 0.5f : 0.35f) * strength);
+        GameAudio.PlaySfx(step + Random.Range(1, water ? 6 : 5), volume, 0.08f);
+        if (strength > 1.3f) GameAudio.PlaySfx(step + Random.Range(1, water ? 6 : 5), volume * 0.7f, 0.12f); // both feet on a landing
+        Stepped?.Invoke(transform.position, strength);
+    }
+
+    // a landing after a jump or a drop: louder the faster she came down
+    void UpdateLanding(bool grounded)
+    {
+        if (!grounded)
+        {
+            airTime += Time.deltaTime;
+            fallSpeed = Mathf.Max(fallSpeed, -velocity.y);
+        }
+        else if (!wasGrounded && airTime > 0.2f)
+        {
+            Step(Mathf.Lerp(1.4f, 2.2f, Mathf.InverseLerp(4f, 12f, fallSpeed)));
+        }
+        if (grounded) { airTime = 0f; fallSpeed = 0f; }
+        wasGrounded = grounded;
     }
 
 

@@ -38,7 +38,7 @@ public static class CharacterKeyLight
         light.spotAngle = 55f;
         light.innerSpotAngle = 35f;
         light.range = 4f * s;
-        light.intensity = 2.2f;
+        light.intensity = 1.0f;
         light.color = new Color(1f, 0.93f, 0.84f);
         light.shadows = LightShadows.Soft;
         light.shadowBias = 0.02f;

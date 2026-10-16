@@ -61,6 +61,7 @@ public class TitleScreen : MonoBehaviour
         if (exitButton != null) exitButton.onClick.AddListener(Application.Quit);
         if (clickText != null) clickText.text = SaveSystem.HasSave ? "Click to Continue" : "Click to Start";
 
+        StyleUi();
         SpawnHeroine();
         StartCoroutine(Intro());
     }
@@ -99,6 +100,44 @@ public class TitleScreen : MonoBehaviour
         g.alpha = a;
         g.interactable = a > 0.5f;
         g.blocksRaycasts = a > 0.5f;
+    }
+
+    /// <summary>
+    /// The title in the game's own type (Sarabun, as the dialogue and the end screen) instead of the default
+    /// italic: deep navy on the white world, with the gold line; the menu buttons get a soft frosted plate
+    /// so they read against the bright sky.
+    /// </summary>
+    void StyleUi()
+    {
+        var ink = new Color(0.14f, 0.16f, 0.27f);
+        foreach (var g in new[] { logoGroup, clickGroup, buttonsGroup })
+        {
+            if (g == null) continue;
+            foreach (var t in g.GetComponentsInChildren<TMP_Text>(true))
+            {
+                string s = t.text.ToUpperInvariant();
+                bool title = s.Contains("ECHO OF MEMORIES") && t.fontSize >= 40;
+                bool button = t.GetComponentInParent<Button>() != null;
+                UiTheme.Style(t, title || button, t.fontSize, new Color(ink.r, ink.g, ink.b, title ? 1f : button ? 0.95f : 0.8f), 0f);
+                t.fontStyle = title ? FontStyles.UpperCase : FontStyles.Normal;
+                if (title) t.characterSpacing = 10f;
+                else if (!button) t.characterSpacing = 2f;
+            }
+            foreach (var b in g.GetComponentsInChildren<Button>(true))
+            {
+                var img = b.GetComponent<Image>();
+                if (img == null) continue;
+                img.sprite = UiTheme.RoundedRect(20);
+                img.type = Image.Type.Sliced;
+                img.color = Color.white;
+                var c = b.colors;
+                c.normalColor = new Color(1f, 1f, 1f, 0.5f);
+                c.highlightedColor = new Color(1f, 0.96f, 0.88f, 0.85f);
+                c.pressedColor = new Color(1f, 0.9f, 0.75f, 0.95f);
+                c.selectedColor = c.normalColor;
+                b.colors = c;
+            }
+        }
     }
 
     IEnumerator Intro()

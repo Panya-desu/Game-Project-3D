@@ -263,6 +263,8 @@ public class SmokeTestDriver : MonoBehaviour
         Check(GameObject.Find("Protagonist") != null && GameObject.Find("Heroine_Reflection") != null, "title screen shows the protagonist and her reflection on the water");
         yield return new WaitForSeconds(3f);
         UiShot("title_character");
+        yield return new WaitForSeconds(2.5f);
+        UiShot("title_menu"); // the menu buttons fully faded in
         Check(GameAudio.Instance != null && ScreenFader.Instance != null && GameHud.Instance != null, "runtime systems bootstrapped");
         yield return new WaitForSeconds(1.5f);
         Check(GameAudio.CurrentAmbient == "amb_title", "title theme playing");
@@ -286,6 +288,17 @@ public class SmokeTestDriver : MonoBehaviour
         UiShot("ui_dialogue_white");
         yield return new WaitForSeconds(1f);
         yield return WaitFor(() => !DialogueManager.IsAnyTalking, 10f);
+        // the invisible fence: walking off across the water stops near the start
+        {
+            var wp = Find<Movement>();
+            Vector3 start = wp.transform.position;
+            yield return Walk(new Vector3(0f, 0f, -40f));
+            Vector3 stop = wp.transform.position;
+            Check(!walkOk && stop.z > -12f, $"White Space fence stops the player wandering off (stopped at z={stop.z:F1})");
+            var wcc = wp.GetComponent<CharacterController>();
+            wcc.enabled = false; wp.transform.position = start; wcc.enabled = true;
+            yield return null;
+        }
         var door = FindObjectsByType<Door>(FindObjectsSortMode.None).FirstOrDefault(d => d.name == "Door1");
         Check(door != null && GameObject.Find("__Environment/World/Gate_Door1") != null, "White Space has the gate for the first memory");
         foreach (var i in door.GetComponents<Interactable>()) if (i.canInteract) i.Interact();
@@ -364,7 +377,16 @@ public class SmokeTestDriver : MonoBehaviour
         yield return new WaitForSeconds(1.6f);
         float fullOpen = Quaternion.Angle(closedRot, hinge.localRotation);
         Check(fullOpen > 60f, $"bedroom door ends fully open ({fullOpen:F0} deg)");
+        int steps = 0; float walkedFrom = 0f;
+        System.Action<Vector3, float> countStep = (pos, k) => { if (k <= 1f) steps++; };
+        Movement.Stepped += countStep;
+        var walker = Find<Movement>(); Vector3 walkStart = walker.transform.position;
         yield return Walk(new Vector3(5.5f, 0, 7.6f), new Vector3(9.8f, 0, 7.6f), new Vector3(12f, 0, 12.5f));
+        Movement.Stepped -= countStep;
+        walkedFrom = Vector3.Distance(new Vector3(walkStart.x, 0, walkStart.z), new Vector3(walker.transform.position.x, 0, walker.transform.position.z));
+        Debug.Log($"[Smoke] footsteps: {steps} over {walkedFrom:F1} m, from her feet={walker.StepsFromBody}");
+        Check(walker.StepsFromBody && steps >= 4 && walkedFrom / Mathf.Max(1, steps) > 0.8f && walkedFrom / Mathf.Max(1, steps) < 4f,
+            $"footsteps follow her walking feet ({steps} steps over {walkedFrom:F1} m)");
         Check(walkOk, "walk bedroom -> house (stopped at " + walkEnd + ")");
 
         // ── House ──
@@ -528,6 +550,11 @@ public class SmokeTestDriver : MonoBehaviour
         RunTimer.SetElapsed(RunTimer.LimitSeconds - 75f);
         yield return Settle(1.5f);
         UiShot("ui_timer_warning");
+        int stuttersBefore = LowTimeFlicker.Stutters;
+        yield return WaitFor(() => LowTimeFlicker.Stutters > stuttersBefore, 14f);
+        Check(LowTimeFlicker.Stutters > stuttersBefore, "lamps stutter in the last minutes of the clock");
+        Check(Resources.Load<AudioClip>("Audio/door_reveal") != null && Resources.Load<AudioClip>("Audio/amb_wind") != null, "door reveal and wind sounds present");
+        RunTimer.SetElapsed(RunTimer.LimitSeconds - 70f);
         RunTimer.SetElapsed(RunTimer.LimitSeconds - 1f);
         yield return new WaitForSeconds(3.5f);
         var timeUp = RunTimer.Instance.transform.Find("TimerCanvas/TimeUp");

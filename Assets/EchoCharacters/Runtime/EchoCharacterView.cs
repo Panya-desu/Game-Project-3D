@@ -21,10 +21,20 @@ namespace EchoCharacters
 
         /// <param name="normalizedSpeed">0 = idle, 0.5 = walk, 1 = run.</param>
         public void SetLocomotion(float normalizedSpeed)
-        { if (animator) animator.SetFloat("Speed", Mathf.Clamp01(normalizedSpeed)); }
+        { var locomotion=GetComponent<EchoLocomotion>();if(locomotion&&locomotion.enabled)locomotion.SetSpeed(normalizedSpeed);else if(animator)animator.SetFloat("Speed",Mathf.Clamp01(normalizedSpeed),.18f,Time.deltaTime); }
 
         public void SetTalking(bool talking)
         { if (animator) animator.SetBool("Talking", talking); }
+        bool airborne;
+        public void SetAirborne(bool value,float verticalVelocity=0)
+        {
+            if(!animator||value==airborne)return;
+            airborne=value;string state=value?(verticalVelocity>0?"JumpStart":"FallLoop"):"Land";
+            int hash=Animator.StringToHash("Base Layer."+state);
+            if(animator.HasState(0,hash))animator.CrossFadeInFixedTime(hash,.10f,0,0);
+        }
+        public void ReachOut()
+        {if(animator)animator.CrossFadeInFixedTime("ReachOut",.15f,0,0);}
         public void Interact() { if (animator) animator.SetTrigger("Interact"); }
         public void LookAround() { if (animator) animator.SetTrigger("LookAround"); }
         public void Appear() { if (animator) animator.SetTrigger("Appear"); }

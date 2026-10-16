@@ -45,6 +45,7 @@ public class LevelCutscenes : MonoBehaviour
             if (d.transform.root.name == "ToEnding") EnterThrough.Wire(d);
         wasPowered = puzzle != null && puzzle.IsPowered;
         wasSolved = puzzle != null && puzzle.IsSolved;
+        if (wasSolved) EndingDoorGlow(); // a loaded save past the levers: the door is already there
 
         var dm = FindAnyObjectByType<DialogueManager>();
         if (dm != null && !dm.FirstDialogueDone) WakeUp();
@@ -124,6 +125,51 @@ public class LevelCutscenes : MonoBehaviour
 
     // ───────────── 3. the door appears ─────────────
 
+    /// <summary>
+    /// The door that appeared is a way into a memory, like the gates of the White Space: golden motes rise
+    /// from its threshold, a faint warm light spills from it and a soft shimmer is heard near it.
+    /// </summary>
+    void EndingDoorGlow()
+    {
+        var ending = GameObject.Find("ToEnding");
+        var door = ending != null ? ending.GetComponentInChildren<Door>(true) : null;
+        if (door == null || transform.Find("EndingDoorGlow") != null) return;
+        var root = new GameObject("EndingDoorGlow").transform;
+        root.SetParent(transform, false);
+        Vector3 at = door.transform.position;
+        WhiteSpaceFlair.MakeGateMotes(root, at);
+        var lightGo = new GameObject("DoorLight");
+        lightGo.transform.SetParent(root, false);
+        lightGo.transform.position = at + Vector3.up * 1.4f;
+        var l = lightGo.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.color = new Color(1f, 0.84f, 0.62f);
+        l.intensity = 1.4f;
+        l.range = 4.5f;
+        l.shadows = LightShadows.None;
+        var pulse = lightGo.AddComponent<PulseGlow>();
+        pulse.targetLight = l;
+        var shimmer = new GameObject("DoorShimmer").AddComponent<AudioSource>();
+        shimmer.transform.SetParent(root, false);
+        shimmer.transform.position = at + Vector3.up * 1.4f;
+        shimmer.clip = Resources.Load<AudioClip>("Audio/shimmer");
+        shimmer.spatialBlend = 1f; shimmer.rolloffMode = AudioRolloffMode.Linear; shimmer.minDistance = 1.5f; shimmer.maxDistance = 10f;
+        shimmer.playOnAwake = false;
+        StartCoroutine(ShimmerNowAndThen(shimmer));
+    }
+
+    System.Collections.IEnumerator ShimmerNowAndThen(AudioSource s)
+    {
+        while (s != null)
+        {
+            yield return new WaitForSeconds(Random.Range(5f, 9f));
+            if (s == null || s.clip == null || PauseMenu.IsPaused) continue;
+            s.pitch = Random.Range(0.92f, 1.08f);
+            s.volume = 0.25f;
+            s.Play();
+        }
+    }
+
     void DoorAppears()
     {
         // only the door: she is not shown walking up to it, since the player is still standing
@@ -140,7 +186,9 @@ public class LevelCutscenes : MonoBehaviour
                                     onStart: () =>
                                     {
                                         ScreenFader.Flash(new Color(1f, 1f, 1f, 0.9f), 0.8f);
-                                        GameAudio.PlaySfx("memory_whoosh");
+                                        GameAudio.PlaySfx("memory_whoosh", 0.6f);
+                                        GameAudio.PlaySfx("door_reveal", 0.85f); // a low tone that swells and rises: something important
+                                        EndingDoorGlow();
                                     }),
         };
         CutscenePlayer.Play(shots);

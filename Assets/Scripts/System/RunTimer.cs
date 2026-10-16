@@ -106,9 +106,11 @@ public class RunTimer : MonoBehaviour
 
         float k = Running || TimedOut ? Mathf.InverseLerp(LimitSeconds * WarnFrom, LimitSeconds, Elapsed) : 0f;
         float pulse = k > 0.85f ? 0.12f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 5.5f)) : 0f;
-        edge.color = new Color(0.75f, 0.02f, 0.04f, Mathf.Clamp01(k * k * 0.85f + pulse * k));
+        // a deep red vignette that leaves the middle of the screen clear (it used to wash the whole view red
+        // in the last minute, hard to search the room through)
+        edge.color = new Color(0.55f, 0.02f, 0.05f, Mathf.Clamp01(k * k * 0.5f + pulse * k * 0.6f));
 
-        bool showClock = (Running || TimedOut) && !PauseMenu.IsPaused;
+        bool showClock = (Running || TimedOut) && !PauseMenu.IsPaused && !PhoneManager.IsPhoneOpen; // not over the phone
         clock.gameObject.SetActive(showClock);
         if (showClock)
         {

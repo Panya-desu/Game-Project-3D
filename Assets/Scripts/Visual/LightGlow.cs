@@ -3,6 +3,9 @@ using UnityEngine;
 /// <summary>
 /// Fake volumetric glow (light shaft or ceiling halo) tied to a real Light: its brightness follows
 /// the light's intensity, so it flickers with LightFlicker and dims when the storage power is out.
+/// The light shafts (three crossed planes hanging under each ceiling lamp) are switched off in play:
+/// with no dust or haze in the rooms they read as flat sheets pointing straight down, and walking under
+/// a lamp went through them. The ceiling halo stays.
 /// </summary>
 [ExecuteAlways]
 [RequireComponent(typeof(Renderer))]
@@ -21,6 +24,7 @@ public class LightGlow : MonoBehaviour
     void OnEnable()
     {
         rend = GetComponent<Renderer>();
+        if (Application.isPlaying && name == "LightShaft") { rend.enabled = false; enabled = false; return; }
         block = new MaterialPropertyBlock();
         last = -1f;
         Refresh();

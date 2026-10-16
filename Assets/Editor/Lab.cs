@@ -10,6 +10,21 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Player Body")]
     public static void PlayerBody() => Start("Assets/Scenes/Level_1.unity", "player");
 
+    [MenuItem("Tools/Dev/Lab: Reverb Test (Level_1)")]
+    public static void Reverb() => Start("Assets/Scenes/Level_1.unity", "reverb");
+
+    [MenuItem("Tools/Dev/Lab: Room Photos (Level_1)")]
+    public static void Rooms() => Start("Assets/Scenes/Level_1.unity", "rooms");
+
+    [MenuItem("Tools/Dev/Lab: Room Photos (Title)")]
+    public static void RoomsTitle() => Start("Assets/Scenes/Main.unity", "rooms");
+
+    [MenuItem("Tools/Dev/Lab: Room Photos (White Space)")]
+    public static void RoomsWhite() => Start("Assets/Scenes/WhiteSpace.unity", "rooms");
+
+    [MenuItem("Tools/Dev/Lab: Room Photos (Confrontation)")]
+    public static void RoomsConfront() => Start("Assets/Scenes/Confrontation.unity", "rooms");
+
     [MenuItem("Tools/Dev/Lab: Wake Cutscene Face")]
     public static void WakeFace() => Start("Assets/Scenes/Level_1.unity", "wakeface");
 

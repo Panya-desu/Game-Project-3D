@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2f5dcb10539f0f4282d2bb8fb05efb0, type: 3}
+  m_Name: ToneHarmony
+  m_EditorClassIdentifier: Assembly-CSharp::ToneHarmony
+  entries:
+  - original: {fileID: 4800659431873534627, guid: 77a460b39519fb846b6f01d88adf913e, type: 3}
+    color: {r: 0.34281325, g: 0.6278534, b: 0.76180726, a: 1}
+  - original: {fileID: 6852675332540939453, guid: 41c2f8157ed23d948b8e78bc6a374afe, type: 3}
+    color: {r: 0.49529415, g: 0.32750422, b: 0.28210232, a: 1}
+  - original: {fileID: -736938290813285100, guid: 41c2f8157ed23d948b8e78bc6a374afe, type: 3}
+    color: {r: 0.7145347, g: 0.5428677, b: 0.4287208, a: 1}
+  - original: {fileID: 75108902592221867, guid: 23b8c30ca1e5edb43931924389946060, type: 3}
+    color: {r: 0.8799558, g: 0.55657774, b: 0.4443064, a: 1}
+  - original: {fileID: -4918501577507080001, guid: 23b8c30ca1e5edb43931924389946060, type: 3}
+    color: {r: 0.40693104, g: 0.6782184, b: 0.42041606, a: 1}
+  - original: {fileID: 555120956786873621, guid: e35a5d999c3bfcf4d9e3029e45e1bab0, type: 3}
+    color: {r: 0.55836225, g: 0.6378371, b: 0.38270226, a: 1}
+  - original: {fileID: 4250217304232768913, guid: 1761073985561df4bb77a4ce06857f50, type: 3}
+    color: {r: 0.3930644, g: 0.5198768, b: 0.6551074, a: 1}
+  - original: {fileID: 2646190618815262879, guid: d097a7a34ac985542ad95c37c4d122c0, type: 3}
+    color: {r: 0.6084791, g: 0.7402808, b: 0.44416848, a: 1}
+  - original: {fileID: -870952796764628979, guid: 64ac893d23169864d853c9ec30884940, type: 3}
+    color: {r: 0.872369, g: 0.51649976, b: 0.48746583, a: 1}
+  - original: {fileID: 4913426069162526988, guid: 64ac893d23169864d853c9ec30884940, type: 3}
+    color: {r: 0.31834844, g: 0.66821563, b: 0.707441, a: 1}
+  - original: {fileID: -2669957238963622279, guid: 64ac893d23169864d853c9ec30884940, type: 3}
+    color: {r: 0.9162749, g: 0.8765592, b: 0.5236547, a: 1}
+  - original: {fileID: 2646190618815262879, guid: 64ac893d23169864d853c9ec30884940, type: 3}
+    color: {r: 0.6084791, g: 0.7402808, b: 0.44416848, a: 1}
+  - original: {fileID: 8793776977858620214, guid: 86afe431c8842a4448123506c17819c1, type: 3}
+    color: {r: 0.3386908, g: 0.2686809, b: 0.18543534, a: 1}
+  - original: {fileID: 8793776977858620214, guid: 1a3e9b35ecbae6f4bb58d621325b0652, type: 3}
+    color: {r: 0.3386908, g: 0.2686809, b: 0.18543534, a: 1}
+  - original: {fileID: -4918501577507080001, guid: 1da3976a2c1e10345afae8556536931a, type: 3}
+    color: {r: 0.40693104, g: 0.6782184, b: 0.42041606, a: 1}
+  - original: {fileID: 4913426069162526988, guid: 1da3976a2c1e10345afae8556536931a, type: 3}
+    color: {r: 0.31834844, g: 0.66821563, b: 0.707441, a: 1}
+  - original: {fileID: -870952796764628979, guid: 1da3976a2c1e10345afae8556536931a, type: 3}
+    color: {r: 0.872369, g: 0.51649976, b: 0.48746583, a: 1}
+  - original: {fileID: 8588245910270914291, guid: 1da3976a2c1e10345afae8556536931a, type: 3}
+    color: {r: 0.34474972, g: 0.6336794, b: 0.7661105, a: 1}
+  - original: {fileID: 5865586234719623449, guid: 1da3976a2c1e10345afae8556536931a, type: 3}
+    color: {r: 0.59728223, g: 0.3624633, b: 0.6357179, a: 1}
+  - original: {fileID: 8013685226820913702, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.82577467, g: 0.6803424, b: 0.4954648, a: 1}
+  - original: {fileID: -2669957238963622279, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.9162749, g: 0.8765592, b: 0.5236547, a: 1}
+  - original: {fileID: -4918501577507080001, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.40693104, g: 0.6782184, b: 0.42041606, a: 1}
+  - original: {fileID: 5865586234719623449, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.59728223, g: 0.3624633, b: 0.6357179, a: 1}
+  - original: {fileID: -4405399478562283471, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.85, g: 0.66754013, b: 0.3825, a: 1}
+  - original: {fileID: -870952796764628979, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.872369, g: 0.51649976, b: 0.48746583, a: 1}
+  - original: {fileID: 7126732280898164573, guid: 04964acd615d8184d9755a9db6deb932, type: 3}
+    color: {r: 0.22667688, g: 0.5037264, b: 0.47777054, a: 1}
+  - original: {fileID: 8013685226820913702, guid: 348ee898344c6df489d2768804b56b8e, type: 3}
+    color: {r: 0.82577467, g: 0.6803424, b: 0.4954648, a: 1}
+  - original: {fileID: 3312050983373826766, guid: 55802efbd320dfc46975f665d40dd104, type: 3}
+    color: {r: 0.66706187, g: 0.52695954, b: 0.4002371, a: 1}
+  - original: {fileID: 3312050983373826766, guid: e4278070126206e4cb3ee3605d12862d, type: 3}
+    color: {r: 0.66706187, g: 0.52695954, b: 0.4002371, a: 1}
+  - original: {fileID: 3312050983373826766, guid: e6881ed6af385514fa8d94a95e6ff4de, type: 3}
+    color: {r: 0.66706187, g: 0.52695954, b: 0.4002371, a: 1}
+  - original: {fileID: -4918501577507080001, guid: 10ff92bd171e40342a43c8a345f6bd0a, type: 3}
+    color: {r: 0.40693104, g: 0.6782184, b: 0.42041606, a: 1}
+  - original: {fileID: 3892526609429628450, guid: 10ff92bd171e40342a43c8a345f6bd0a, type: 3}
+    color: {r: 0.9137737, g: 0.5482642, b: 0.6748712, a: 1}
+  - original: {fileID: -2669957238963622279, guid: 10ff92bd171e40342a43c8a345f6bd0a, type: 3}
+    color: {r: 0.9162749, g: 0.8765592, b: 0.5236547, a: 1}
+  - original: {fileID: 8013685226820913702, guid: 10ff92bd171e40342a43c8a345f6bd0a, type: 3}
+    color: {r: 0.82577467, g: 0.6803424, b: 0.4954648, a: 1}
+  - original: {fileID: 75108902592221867, guid: 10ff92bd171e40342a43c8a345f6bd0a, type: 3}
+    color: {r: 0.8799558, g: 0.55657774, b: 0.4443064, a: 1}
+  - original: {fileID: 3892526609429628450, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.9137737, g: 0.5482642, b: 0.6748712, a: 1}
+  - original: {fileID: 3473123015285894068, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.50591934, g: 0.41141814, b: 0.6856969, a: 1}
+  - original: {fileID: 2646190618815262879, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.6084791, g: 0.7402808, b: 0.44416848, a: 1}
+  - original: {fileID: -2669957238963622279, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.9162749, g: 0.8765592, b: 0.5236547, a: 1}
+  - original: {fileID: -4405399478562283471, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.85, g: 0.66754013, b: 0.3825, a: 1}
+  - original: {fileID: 8588245910270914291, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.34474972, g: 0.6336794, b: 0.7661105, a: 1}
+  - original: {fileID: -870952796764628979, guid: a681a61335831da4599224a9e5654a3e, type: 3}
+    color: {r: 0.872369, g: 0.51649976, b: 0.48746583, a: 1}
+  - original: {fileID: -870952796764628979, guid: 29748bf9828387c4d90311de530b5f9c, type: 3}
+    color: {r: 0.872369, g: 0.51649976, b: 0.48746583, a: 1}
+  - original: {fileID: 4913426069162526988, guid: 29748bf9828387c4d90311de530b5f9c, type: 3}
+    color: {r: 0.31834844, g: 0.66821563, b: 0.707441, a: 1}
+  - original: {fileID: 8013685226820913702, guid: 29748bf9828387c4d90311de530b5f9c, type: 3}
+    color: {r: 0.82577467, g: 0.6803424, b: 0.4954648, a: 1}
+  - original: {fileID: 9003353085549565770, guid: c35a114c32d033142bbd75c3888b8053, type: 3}
+    color: {r: 0.8714287, g: 0.62325466, b: 0.52285725, a: 1}
+  - original: {fileID: 2926557707537190794, guid: c35a114c32d033142bbd75c3888b8053, type: 3}
+    color: {r: 0.3, g: 0.33, b: 0.38, a: 1}
+  - original: {fileID: 2947230280197879067, guid: 0030ebd425e3a584997143c2dd7cda3c, type: 3}
+    color: {r: 0.59160155, g: 0.4592224, b: 0.35496092, a: 1}
+  - original: {fileID: 6375220088319949381, guid: 0030ebd425e3a584997143c2dd7cda3c, type: 3}
+    color: {r: 0.59160155, g: 0.4592224, b: 0.35496092, a: 1}
+  - original: {fileID: 4804304363898988870, guid: 0030ebd425e3a584997143c2dd7cda3c, type: 3}
+    color: {r: 0.59160155, g: 0.4592224, b: 0.35496092, a: 1}
+  - original: {fileID: 1085806287595398310, guid: 0030ebd425e3a584997143c2dd7cda3c, type: 3}
+    color: {r: 0.59160155, g: 0.4592224, b: 0.35496092, a: 1}
+  - original: {fileID: 1900440159666334134, guid: 0030ebd425e3a584997143c2dd7cda3c, type: 3}
+    color: {r: 0.59160155, g: 0.4592224, b: 0.35496092, a: 1}
+  - original: {fileID: -2669957238963622279, guid: 0b713e72fcb724345a42243b5e3ea600, type: 3}
+    color: {r: 0.9162749, g: 0.8765592, b: 0.5236547, a: 1}

@@ -33,7 +33,7 @@ public class CharacterLook : MonoBehaviour
         secondary.enabled = false;
         secondary.skirtMaxAngle = 4f;
         secondary.hairMaxAngle = 5f;
-        secondary.stiffness = 300f;
+        secondary.stiffness = 65f;
         secondary.drag = 0.35f;
         secondary.shirtMaxAngle = 2.5f;
         secondary.layerGuard = false; // the per-frame cloth checks cost ~40 ms per character (title screen lag)

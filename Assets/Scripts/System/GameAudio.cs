@@ -84,7 +84,59 @@ public class GameAudio : MonoBehaviour
         src.volume = 0f;
         // UI clicks must still play while the pause menu pauses the listener
         src.ignoreListenerPause = !loop;
+        // the ambience loops are already the sound of the room: no extra echo from the reverb zones (AudioMood)
+        if (loop) src.reverbZoneMix = 0f;
         return src;
+    }
+
+    // ── the echo of the bare rooms ──
+    // A sound's echo is played by its own voice: the same clip through a reverb filter, wet only (the sound
+    // itself stays clear), and with silence added after it so the voice keeps playing until the echo has
+    // died away (a filter stops with its source, which cut the echo off).
+    readonly List<AudioSource> echoPool = new List<AudioSource>();
+    readonly Dictionary<AudioClip, AudioClip> padded = new Dictionary<AudioClip, AudioClip>();
+
+    void PlayEcho(AudioClip clip, float volume, float pitch)
+    {
+        var space = AudioMood.EchoSpace;
+        var tail = Padded(clip, space.decay + 0.6f);
+        if (tail == null) return;
+        AudioSource v = null;
+        foreach (var s in echoPool) if (!s.isPlaying) { v = s; break; }
+        if (v == null)
+        {
+            if (echoPool.Count >= 8) return; // enough echo already
+            v = CreateSource("Echo" + echoPool.Count, false);
+            v.reverbZoneMix = 0f;
+            v.gameObject.AddComponent<AudioReverbFilter>().reverbPreset = AudioReverbPreset.User;
+            echoPool.Add(v);
+        }
+        var f = v.GetComponent<AudioReverbFilter>();
+        f.dryLevel = -10000f; // wet only
+        f.room = space.room; f.roomHF = space.roomHF; f.roomLF = 0f;
+        f.decayTime = space.decay; f.decayHFRatio = space.decayHF;
+        f.reflectionsLevel = space.reflections; f.reflectionsDelay = space.reflectionsDelay;
+        f.reverbLevel = space.reverb; f.reverbDelay = space.reverbDelay;
+        f.diffusion = 100f; f.density = 100f;
+        v.clip = tail;
+        v.volume = volume * (space.gain > 0f ? space.gain : 1f);
+        v.pitch = pitch;
+        v.Play();
+    }
+
+    AudioClip Padded(AudioClip clip, float extraSeconds)
+    {
+        if (padded.TryGetValue(clip, out var p)) return p;
+        p = null;
+        int extra = Mathf.CeilToInt(extraSeconds * clip.frequency);
+        var data = new float[clip.samples * clip.channels];
+        if (clip.loadState == AudioDataLoadState.Loaded && clip.GetData(data, 0))
+        {
+            p = AudioClip.Create(clip.name + " (echo)", clip.samples + extra, clip.channels, clip.frequency, false);
+            p.SetData(data, 0); // the rest stays silent
+        }
+        padded[clip] = p;
+        return p;
     }
 
     AudioClip Get(string clipName)
@@ -113,6 +165,15 @@ public class GameAudio : MonoBehaviour
 
     public static string CurrentAmbient => Instance != null ? Instance.currentAmbient : null;
 
+    /// <summary>
+    /// A held breath before a big moment: the ambience fades to silence over <paramref name="seconds"/> and
+    /// stays silent; the next PlayAmbient (even of the same loop) fades back in from there.
+    /// </summary>
+    public static void Hush(float seconds)
+    {
+        if (Instance != null) Instance.PlayAmbientInternal(null, seconds);
+    }
+
     void PlaySfxInternal(string clipName, float volume, float pitchVariation)
     {
         var clip = Get(clipName);
@@ -128,14 +189,16 @@ public class GameAudio : MonoBehaviour
         }
 
         src.clip = clip;
-        src.volume = volume;
+        // in an echoing room the sound itself is a touch quieter, so with its echo it is as loud as anywhere
+        src.volume = volume * Mathf.Lerp(1f, 0.95f, AudioMood.EchoAmount);
         src.pitch = 1f + Random.Range(-pitchVariation, pitchVariation);
         src.Play();
+        if (AudioMood.EchoAmount > 0.02f) PlayEcho(clip, volume * 0.42f * AudioMood.EchoAmount, src.pitch); // a soft echo, not louder
     }
 
     void PlayAmbientInternal(string clipName, float fadeSeconds)
     {
-        if (clipName == currentAmbient) return;
+        if (clipName == currentAmbient && clipName != null) return;
         currentAmbient = clipName;
 
         AudioSource from = aIsActive ? ambientA : ambientB;

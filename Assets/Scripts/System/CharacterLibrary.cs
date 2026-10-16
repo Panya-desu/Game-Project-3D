@@ -45,13 +45,10 @@ public class CharacterLibrary : ScriptableObject
     public static void Walk(EchoCharacterView view, Vector3 a, Vector3 b, float k)
     {
         if (view == null) return;
-        float speed = k < 0.85f ? 0.5f : Mathf.Lerp(0.5f, 0f, (k - 0.85f) / 0.15f);
-        view.SetLocomotion(speed);
-        float eased = k < 0.85f ? k : 0.85f + (k - 0.85f) * (1f - (k - 0.85f) / 0.3f);
-        var root = view.transform.root;
-        root.position = Vector3.Lerp(a, b, Mathf.Clamp01(eased));
-        Vector3 dir = Vector3.ProjectOnPlane(b - a, Vector3.up);
-        if (dir.sqrMagnitude > 0.001f) root.rotation = Quaternion.Slerp(root.rotation, Quaternion.LookRotation(dir), 0.1f);
+        // v7: reaches the end, eases in and out, and paces the steps to the real speed
+        var motion = view.GetComponent<EchoCinematicMotion>();
+        if (motion == null) motion = view.gameObject.AddComponent<EchoCinematicMotion>();
+        motion.Walk(a, b, k);
     }
 
     /// <summary>The floor under a point (ignores triggers and the player capsule).</summary>

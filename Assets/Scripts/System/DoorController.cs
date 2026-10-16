@@ -29,6 +29,8 @@ public class DoorController : MonoBehaviour
     private bool initialised;
 
     public bool IsOpen => target > 0.5f;
+    /// <summary>How far open the leaf is now: 0 closed .. 1 open.</summary>
+    public float Progress => progress;
     public bool IsMoving => progress != target;
 
     /// <summary>Fires when a swing ends with the leaf back in the frame (for the slam sound).</summary>

@@ -15,7 +15,7 @@ namespace EchoCharacters.Editor
     {
         const string Root = "Assets/EchoCharacters";
         const string Model = Root + "/Models/EchoCharacter.fbx";
-        static readonly string[] ClipNames = {"Idle","Walk","Run","Talk","LookAround","Interact","DoubleIdle","DoubleTalk","DoubleRush","DoubleAppear"};
+        static readonly string[] ClipNames = {"Idle","Walk","Run","Talk","LookAround","Interact","DoubleIdle","DoubleTalk","DoubleRush","DoubleAppear","WalkStart","WalkStopLeft","WalkStopRight","RunStart","RunStopLeft","RunStopRight","TurnLeft","TurnRight","JumpStart","FallLoop","Land","ReachOut"};
         static readonly string[] BoneNames = {"Hips","Spine","Chest","Neck","Head","LeftShoulder","LeftUpperArm","LeftLowerArm","LeftHand","RightShoulder","RightUpperArm","RightLowerArm","RightHand","LeftUpperLeg","LeftLowerLeg","LeftFoot","LeftToes","RightUpperLeg","RightLowerLeg","RightFoot","RightToes","LeftEye","RightEye"};
         sealed class ExtraCurve { public EditorCurveBinding binding; public AnimationCurve curve; }
         static readonly Dictionary<string,List<ExtraCurve>> SecondaryCurves = new Dictionary<string,List<ExtraCurve>>();
@@ -43,7 +43,8 @@ namespace EchoCharacters.Editor
             var imp = (ModelImporter)AssetImporter.GetAtPath(Model);
             if (imp == null) throw new Exception("EchoCharacter.fbx is missing.");
             imp.animationType = ModelImporterAnimationType.Generic;
-            imp.importAnimation = true;
+            imp.clipAnimations=new ModelImporterClipAnimation[0]; // Import every take before capturing the source curves.
+            imp.importAnimation = true;imp.animationCompression=ModelImporterAnimationCompression.Off;imp.resampleCurves=true;
             imp.importCameras = false; imp.importLights = false;
             imp.materialImportMode = ModelImporterMaterialImportMode.None;
             imp.optimizeGameObjects = false;
@@ -63,13 +64,17 @@ namespace EchoCharacters.Editor
                 if(clean==null)continue;
                 var curves=new List<ExtraCurve>();
                 foreach(var binding in AnimationUtility.GetCurveBindings(clip))
-                    if(binding.type==typeof(Transform)&&IsSecondaryPath(binding.path))
+                    if(binding.type==typeof(Transform)&&(IsSecondaryPath(binding.path)||BoneNames.Contains(binding.path.Substring(binding.path.LastIndexOf('/')+1))))
                     {
                         var source=AnimationUtility.GetEditorCurve(clip,binding);
-                        curves.Add(new ExtraCurve{binding=binding,curve=new AnimationCurve(source.keys){preWrapMode=source.preWrapMode,postWrapMode=source.postWrapMode}});
+                        var targetBinding=binding;
+                        if(!IsSecondaryPath(binding.path))targetBinding.path="_EchoAuthoredPose/"+string.Join("/",binding.path.Split('/').Select(part=>"Pose_"+part));
+                        curves.Add(new ExtraCurve{binding=targetBinding,curve=new AnimationCurve(source.keys){preWrapMode=source.preWrapMode,postWrapMode=source.postWrapMode}});
                     }
                 SecondaryCurves[clean]=curves;
             }
+            foreach(var name in ClipNames)
+                if(!SecondaryCurves.TryGetValue(name,out var captured)||!captured.Any(c=>c.binding.path.StartsWith("_EchoAuthoredPose/",StringComparison.Ordinal)))throw new Exception("Source pose curves missing for "+name);
             var instance = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(Model));
             try
             {
@@ -86,7 +91,7 @@ namespace EchoCharacters.Editor
                 var hd = new HumanDescription {
                     human = bones,
                     skeleton = transforms.Select(t => new SkeletonBone {name=t.name, position=t.localPosition, rotation=t.localRotation, scale=t.localScale}).ToArray(),
-                    upperArmTwist=.5f, lowerArmTwist=.5f, upperLegTwist=.5f, lowerLegTwist=.5f,
+                    upperArmTwist=.5f, lowerArmTwist=1f, upperLegTwist=.5f, lowerLegTwist=.5f,
                     armStretch=0f, legStretch=0f, feetSpacing=0, hasTranslationDoF=false
                 };
                 imp.animationType = ModelImporterAnimationType.Human;
@@ -98,7 +103,7 @@ namespace EchoCharacters.Editor
                     string clean = ClipNames.FirstOrDefault(n => clip.name == n || clip.name.EndsWith("|" + n) || clip.name.EndsWith("_" + n));
                     if (clean == null) clean = ClipNames.FirstOrDefault(n => clip.takeName.EndsWith("|" + n) || clip.takeName == n);
                     if (clean != null) clip.name=clean;
-                    clip.loopTime = clean != "Interact" && clean != "DoubleAppear";
+                    clip.loopTime = clean != "Land" && clean != "ReachOut" && clean != null && !clean.Contains("Start") && !clean.Contains("Stop") && !clean.StartsWith("Turn") && clean != "Interact" && clean != "DoubleAppear";
                     clip.loopPose = clip.loopTime;
                     clip.lockRootRotation=true;clip.lockRootHeightY=true;clip.lockRootPositionXZ=true;
                     clip.keepOriginalOrientation=true;clip.keepOriginalPositionY=true;clip.keepOriginalPositionXZ=true;
@@ -125,11 +130,29 @@ namespace EchoCharacters.Editor
                 else EditorUtility.CopySerialized(source,target);
                 if(SecondaryCurves.TryGetValue(name,out var extra))
                     foreach(var curve in extra)AnimationUtility.SetEditorCurve(target,curve.binding,curve.curve);
-                target.name=name;EditorUtility.SetDirty(target);result[name]=target;
+                AddHandCurves(target,name);target.name=name;EditorUtility.SetDirty(target);result[name]=target;
             }
             return result;
         }
 
+        static void AddHandCurves(AnimationClip clip,string name)
+        {
+            var model=AssetDatabase.LoadAssetAtPath<GameObject>(Model);
+            var body=model.GetComponentsInChildren<SkinnedMeshRenderer>(true).First(r=>r.name=="Body");
+            string path=AnimationUtility.CalculateTransformPath(body.transform,model.transform);
+            bool running=name.StartsWith("Run")||name=="DoubleRush";
+            for(int i=0;i<body.sharedMesh.blendShapeCount;i++)
+            {
+                string shape=body.sharedMesh.GetBlendShapeName(i);
+                if(!shape.Contains("HandRelaxed")&&!shape.Contains("HandSoftGrip"))continue;
+                bool grip=shape.Contains("SoftGrip");
+                float value=grip?(running?100:0):(running?0:85);
+                var curve=AnimationCurve.Constant(0,clip.length,value);
+                if((name=="Interact"||name=="ReachOut")&&shape.EndsWith("Right"))
+                    curve=new AnimationCurve(new Keyframe(0,value),new Keyframe(clip.length*.35f,0),new Keyframe(clip.length*.7f,0),new Keyframe(clip.length,value));
+                AnimationUtility.SetEditorCurve(clip,EditorCurveBinding.FloatCurve(path,typeof(SkinnedMeshRenderer),"blendShape."+shape),curve);
+            }
+        }
         static Dictionary<string,Material> BuildMaterials(bool dark)
         {
             var result=new Dictionary<string,Material>();
@@ -142,6 +165,7 @@ namespace EchoCharacters.Editor
             {
                 string key=meshes[i];string path=Root+"/Materials/"+(dark?"Double_":"Hero_")+key+".mat";
                 var m=AssetDatabase.LoadAssetAtPath<Material>(path);
+                if(m){result[key]=m;continue;} // Preserve the selected U1/S1 materials.
                 if(!m){m=new Material(shader);AssetDatabase.CreateAsset(m,path);}else m.shader=shader;
                 bool lens=key=="GlassesLens", eye=dark&&key=="Eyes";
                 if(lens&&urp)m.shader=Shader.Find("Universal Render Pipeline/Unlit")??shader;
@@ -179,11 +203,22 @@ namespace EchoCharacters.Editor
                 var machine=new AnimatorStateMachine{name="Base Layer"};AssetDatabase.AddObjectToAsset(machine,c);
                 c.layers=new[]{new AnimatorControllerLayer{name="Base Layer",defaultWeight=1,stateMachine=machine}};
             }
-            c.AddParameter("Speed",AnimatorControllerParameterType.Float);c.AddParameter("Talking",AnimatorControllerParameterType.Bool);c.AddParameter("Rushing",AnimatorControllerParameterType.Bool);
+            c.AddParameter("Speed",AnimatorControllerParameterType.Float);c.AddParameter(new AnimatorControllerParameter{name="LocomotionRate",type=AnimatorControllerParameterType.Float,defaultFloat=1});c.AddParameter("Talking",AnimatorControllerParameterType.Bool);c.AddParameter("Rushing",AnimatorControllerParameterType.Bool);
             foreach(var t in new[]{"Interact","LookAround","Appear"})c.AddParameter(t,AnimatorControllerParameterType.Trigger);
-            var sm=c.layers[0].stateMachine;
+            var layers=c.layers;layers[0].iKPass=true;c.layers=layers;var sm=c.layers[0].stateMachine;
             var loco=sm.AddState("Locomotion");var tree=new BlendTree {name="Locomotion",blendParameter="Speed",useAutomaticThresholds=false};AssetDatabase.AddObjectToAsset(tree,c);
-            tree.AddChild(clips[dark?"DoubleIdle":"Idle"],0);tree.AddChild(clips["Walk"],.5f);tree.AddChild(clips["Run"],1);loco.motion=tree;sm.defaultState=loco;
+            tree.AddChild(clips[dark?"DoubleIdle":"Idle"],0);tree.AddChild(clips["Walk"],.5f);tree.AddChild(clips["Run"],1);loco.speedParameterActive=true;loco.speedParameter="LocomotionRate";loco.motion=tree;loco.iKOnFeet=true;sm.defaultState=loco;
+            foreach(var name in new[]{"WalkStart","RunStart","WalkStopLeft","WalkStopRight","RunStopLeft","RunStopRight","TurnLeft","TurnRight"})
+            {
+                var state=sm.AddState(name);state.motion=clips[name];state.iKOnFeet=true;
+                var exit=state.AddTransition(loco);exit.hasExitTime=true;exit.exitTime=.98f;exit.duration=.12f;exit.hasFixedDuration=true;
+                if(name.EndsWith("Start"))exit.offset=.35f;
+            }
+            foreach(var name in new[]{"JumpStart","FallLoop","Land","ReachOut"})
+            {var state=sm.AddState(name);state.motion=clips[name];}
+            var air=sm.states.First(x=>x.state.name=="FallLoop").state;
+            foreach(var name in new[]{"JumpStart","Land","ReachOut"})
+            {var state=sm.states.First(x=>x.state.name==name).state;var exit=state.AddTransition(name=="JumpStart"?air:loco);exit.hasExitTime=true;exit.exitTime=.95f;exit.duration=.12f;exit.hasFixedDuration=true;}
             var talk=sm.AddState("Talk");talk.motion=clips[dark?"DoubleTalk":"Talk"];
             Transition(loco,talk,"Talking",true);Transition(talk,loco,"Talking",false);
             foreach(var name in new[]{"Interact","LookAround","Appear"})
@@ -192,20 +227,64 @@ namespace EchoCharacters.Editor
                 var entry=sm.AddAnyStateTransition(s);entry.hasExitTime=false;entry.duration=.12f;entry.canTransitionToSelf=false;entry.AddCondition(AnimatorConditionMode.If,0,name);
                 var exit=s.AddTransition(loco);exit.hasExitTime=true;exit.exitTime=.95f;exit.duration=.15f;
             }
-            var rush=sm.AddState("Rush");rush.motion=clips["DoubleRush"];
+            var rush=sm.AddState("Rush");rush.motion=clips["DoubleRush"];rush.speedParameterActive=true;rush.speedParameter="LocomotionRate";
             var rt=sm.AddAnyStateTransition(rush);rt.hasExitTime=false;rt.canTransitionToSelf=false;rt.duration=.12f;rt.AddCondition(AnimatorConditionMode.If,0,"Rushing");
             Transition(rush,loco,"Rushing",false);EditorUtility.SetDirty(c);return c;
         }
         static void Transition(AnimatorState from,AnimatorState to,string parameter,bool value)
         {var t=from.AddTransition(to);t.hasExitTime=false;t.duration=.16f;t.AddCondition(value?AnimatorConditionMode.If:AnimatorConditionMode.IfNot,0,parameter);}
 
+        [Serializable] sealed class LayerWeight { public string[] names;public float[] values; }
+        [Serializable] sealed class LayerProxy { public Vector3[] vertices;public int[] triangles;public LayerWeight[] weights;public float margin; }
+        [Serializable] sealed class ShirtSurface { public int[] outer,hemRim;public Vector3[] positions; }
+        static void ConfigureSurface(GameObject model,EchoSecondaryMotion secondary)
+        {
+            var text=AssetDatabase.LoadAssetAtPath<TextAsset>(Root+"/Editor/ShirtSurface.json");
+            if(!text)throw new Exception("Missing shirt outer-surface metadata");
+            var data=JsonUtility.FromJson<ShirtSurface>(text.text);
+            var vertices=model.GetComponentsInChildren<SkinnedMeshRenderer>(true).First(r=>r.name=="Shirt").sharedMesh.vertices;
+            if(vertices.Length!=data.positions.Length)throw new Exception("Shirt vertex order changed; regenerate surface metadata");
+            for(int i=0;i<vertices.Length;i++)if((vertices[i]-data.positions[i]).sqrMagnitude>1e-10f)throw new Exception("Shirt surface mapping mismatch at "+i);
+            secondary.shirtOuterVertices=data.outer;secondary.shirtHemRimVertices=data.hemRim;
+            var proxyText=AssetDatabase.LoadAssetAtPath<TextAsset>(Root+"/Editor/SkirtLayerProxy.json");
+            if(!proxyText)throw new Exception("Missing skirt collision proxy");
+            var proxy=JsonUtility.FromJson<LayerProxy>(proxyText.text);
+            var skirt=model.GetComponentsInChildren<SkinnedMeshRenderer>(true).First(r=>r.name=="Skirt");
+            var indices=skirt.bones.Select((bone,i)=>new {bone.name,i}).ToDictionary(x=>x.name,x=>x.i);
+            var weights=new BoneWeight[proxy.weights.Length];
+            for(int i=0;i<weights.Length;i++)
+            {
+                var w=proxy.weights[i];int[] ids=new int[4];float[] values=new float[4];
+                for(int j=0;j<w.names.Length;j++){ids[j]=indices[w.names[j]];values[j]=w.values[j];}
+                weights[i]=new BoneWeight{boneIndex0=ids[0],boneIndex1=ids[1],boneIndex2=ids[2],boneIndex3=ids[3],weight0=values[0],weight1=values[1],weight2=values[2],weight3=values[3]};
+            }
+            secondary.skirtLayerVertices=proxy.vertices;secondary.skirtLayerTriangles=proxy.triangles;secondary.skirtLayerWeights=weights;secondary.skirtLayerMargin=proxy.margin;
+        }
+        static void SetupAuthoredPose(GameObject model,AnimationClip[] clips)
+        {
+            var originals=model.GetComponentsInChildren<Transform>(true);
+            var parent=new GameObject("_EchoAuthoredPose").transform;parent.SetParent(model.transform,false);
+            var map=new Dictionary<Transform,Transform>();
+            foreach(var child in model.transform.Cast<Transform>().Where(t=>t!=parent).ToArray())ClonePoseNode(child,parent,map);
+            foreach(var curve in SecondaryCurves.Values.SelectMany(list=>list))
+                if(curve.binding.path.StartsWith("_EchoAuthoredPose/",StringComparison.Ordinal)&&!model.transform.Find(curve.binding.path))throw new Exception("Missing authored pose target: "+curve.binding.path);
+            var names=BoneNames.Where(n=>n!="Neck"&&n!="Head"&&n!="LeftEye"&&n!="RightEye").ToArray();
+            var targets=names.Select(n=>originals.Single(t=>t.name==n)).ToArray();
+            model.AddComponent<EchoAuthoredPose>().Configure(targets,targets.Select(t=>map[t]).ToArray(),clips);
+        }
+        static void ClonePoseNode(Transform source,Transform parent,Dictionary<Transform,Transform> map)
+        {
+            if(!source.GetComponentsInChildren<Transform>(true).Any(t=>BoneNames.Contains(t.name)))return;
+            var clone=new GameObject("Pose_"+source.name).transform;clone.SetParent(parent,false);clone.localPosition=source.localPosition;clone.localRotation=source.localRotation;clone.localScale=source.localScale;map[source]=clone;
+            foreach(Transform child in source)ClonePoseNode(child,clone,map);
+        }
         static void BuildPrefab(bool dark,Dictionary<string,Material> materials,AnimatorController controller)
         {
             var root=new GameObject(dark?"TheDouble":"Protagonist");
             var model=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(Model));
             model.name="Visual";model.transform.SetParent(root.transform,false);
             var animator=model.GetComponent<Animator>();if(!animator)animator=model.AddComponent<Animator>();
-            animator.runtimeAnimatorController=controller;animator.applyRootMotion=false;animator.cullingMode=AnimatorCullingMode.AlwaysAnimate;
+            SetupAuthoredPose(model,ClipNames.Select(n=>AssetDatabase.LoadAssetAtPath<AnimationClip>(Root+"/Animations/"+n+".anim")).ToArray());animator.runtimeAnimatorController=controller;model.AddComponent<EchoTurnFootIK>();root.AddComponent<EchoArmPose>();animator.applyRootMotion=false;animator.cullingMode=AnimatorCullingMode.AlwaysAnimate;
             GameObject glasses=null,lenses=null;
             foreach(var r in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -215,7 +294,9 @@ namespace EchoCharacters.Editor
                 if(r.name=="Glasses")glasses=r.gameObject;if(r.name=="GlassesLens")lenses=r.gameObject;
             }
             root.AddComponent<EchoCharacterView>().Configure(animator,glasses,lenses,dark);
-            root.AddComponent<EchoSecondaryMotion>().enabled=false; // opt in after removing legacy shader/bone sway
+            var secondary=root.AddComponent<EchoSecondaryMotion>();secondary.enabled=true;
+            ConfigureSurface(model,secondary);
+            root.AddComponent<EchoLocomotion>(); // opt in after removing legacy shader/bone sway
             string prefabPath=Root+"/Prefabs/"+root.name+".prefab";
             PrefabUtility.SaveAsPrefabAsset(root,prefabPath);UnityEngine.Object.DestroyImmediate(root);
             AssetDatabase.ImportAsset(prefabPath,ImportAssetOptions.ForceUpdate);

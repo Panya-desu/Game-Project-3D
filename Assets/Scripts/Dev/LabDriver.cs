@@ -39,6 +39,8 @@ public class LabDriver : MonoBehaviour
         else if (task == "shadowwalk") yield return ShadowWalk();
         else if (task == "chin") yield return Chin();
         else if (task == "wakeface") yield return WakeFace();
+        else if (task == "rooms") yield return Rooms();
+        else if (task == "reverb") yield return Reverb();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -86,6 +88,158 @@ public class LabDriver : MonoBehaviour
             }
             i++;
             yield return null;
+        }
+    }
+
+    /// <summary>Records what the listener hears after a door sound at several spots: the echo left 0.3-1.2 s
+    /// after the sound, relative to the sound itself (more negative = drier).</summary>
+    IEnumerator Reverb()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        var listener = FindAnyObjectByType<AudioListener>();
+        var tap = listener.gameObject.AddComponent<AudioTap>();
+        var cc = mover.GetComponent<CharacterController>();
+        var spots = new (string name, Vector3 pos)[]
+        {
+            ("bedroom", new Vector3(0.2f, 0f, 4.1f)), ("living", new Vector3(15.2f, 0f, 20f)),
+            ("storage_door_from_living", new Vector3(23.4f, 0f, 22.8f)), ("storage_middle", new Vector3(30.2f, 0f, 13.3f)),
+            ("storeroom_door", new Vector3(34.6f, 0f, 26.6f)), ("storeroom_middle", new Vector3(30.2f, 0f, 33.3f)),
+            ("library_door", new Vector3(38.6f, 0f, 21.8f)), ("library_middle", new Vector3(45.2f, 0f, 18.3f)),
+        };
+        float y = mover.transform.position.y;
+        foreach (var (name, pos) in spots)
+        {
+            cc.enabled = false; mover.transform.position = new Vector3(pos.x, y, pos.z); cc.enabled = true;
+            yield return new WaitForSeconds(0.6f); // let the room's ambience trigger fire, then silence it
+            GameAudio.Hush(0.1f);
+            yield return new WaitForSeconds(2.4f);
+            float[] tails = new float[2];
+            for (int pass = 0; pass < 2; pass++)
+            {
+                foreach (var z in FindObjectsByType<AudioReverbZone>(FindObjectsSortMode.None)) z.enabled = pass == 0;
+                var mood = FindAnyObjectByType<AudioMood>();
+                if (mood != null) mood.enabled = pass == 0;
+                if (pass == 1) typeof(AudioMood).GetProperty("EchoAmount").GetSetMethod(true).Invoke(null, new object[] { 0f }); // echo off
+                yield return new WaitForSeconds(0.3f);
+                tap.Begin();
+                GameAudio.PlaySfx("wood_step_2", 0.9f); // a footstep, the sound that matters most here
+                yield return new WaitForSeconds(1.4f);
+                var e = tap.End();
+                float tail = 1e-12f;
+                foreach (var b in e) if (b.t > 0.12f && b.t < 0.8f) tail += b.e;
+                tails[pass] = tail;
+            }
+            foreach (var z in FindObjectsByType<AudioReverbZone>(FindObjectsSortMode.None)) z.enabled = true;
+            var m2 = FindAnyObjectByType<AudioMood>(); if (m2 != null) m2.enabled = true;
+            Debug.Log($"[Lab] reverb {name}: echo after the sound {10f * Mathf.Log10(tails[0] / tails[1]):F1} dB louder than without reverb");
+        }
+    }
+
+    /// <summary>Photos of every room in play mode (runtime lighting, gradings, HUD hidden) into ../_work/lab/rooms.</summary>
+    IEnumerator Rooms()
+    {
+        string scene = SceneManager.GetActiveScene().name;
+        if (scene == "Main")
+        {
+            // the title screen as the player sees it, from its own camera
+            yield return new WaitForSeconds(5f);
+            var titleCam = FindObjectsByType<Camera>(FindObjectsSortMode.None).FirstOrDefault(c => c.enabled);
+            string tdir = System.IO.Path.Combine(OutDir, "rooms");
+            System.IO.Directory.CreateDirectory(tdir);
+            var trt = new RenderTexture(1920, 1080, 24) { antiAliasing = 8 };
+            titleCam.targetTexture = trt; titleCam.Render(); titleCam.targetTexture = null;
+            RenderTexture.active = trt;
+            var ttex = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
+            ttex.ReadPixels(new Rect(0, 0, 1920, 1080), 0, 0); ttex.Apply();
+            RenderTexture.active = null;
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(tdir, "00_title.jpg"), ttex.EncodeToJPG(93));
+            Debug.Log("[Lab] room shot 00_title");
+            yield break;
+        }
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        var mover = FindAnyObjectByType<Movement>();
+        if (mover != null) { var body = mover.transform.Find("PlayerBody"); if (body != null) body.gameObject.SetActive(false); }
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) { c.enabled = false; if (c.CompareTag("MainCamera")) c.tag = "Untagged"; }
+        var cam = MakeCam(60f);
+        cam.tag = "MainCamera";
+        cam.clearFlags = CameraClearFlags.Skybox;
+        cam.nearClipPlane = 0.05f;
+        var data = UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam);
+        data.renderPostProcessing = true;
+        data.antialiasing = UnityEngine.Rendering.Universal.AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+        string dir = System.IO.Path.Combine(OutDir, "rooms");
+        System.IO.Directory.CreateDirectory(dir);
+
+        IEnumerator Take(string name, Vector3 pos, Vector3 look, float fov = 60f, float settle = 2.5f)
+        {
+            cam.transform.position = pos;
+            cam.transform.LookAt(look);
+            cam.fieldOfView = fov;
+            for (float t = 0f; t < settle; t += Time.deltaTime) yield return null; // the zone gradings ease in
+            var rt = new RenderTexture(1920, 1080, 24) { antiAliasing = 8 };
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = null;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 1920, 1080), 0, 0); tex.Apply();
+            RenderTexture.active = null;
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name + ".jpg"), tex.EncodeToJPG(93));
+            Destroy(tex); rt.Release(); Destroy(rt);
+            Debug.Log($"[Lab] room shot {name} zone={StorageZone.Current:F2} spill={StorageZone.Spill:F2}");
+        }
+
+        if (scene == "Level_1")
+        {
+            yield return Take("01_bedroom", new Vector3(6.3f, 3.0f, 9.8f), new Vector3(-3.5f, 1.2f, -0.5f));
+            yield return Take("02_bedroom_desk", new Vector3(1.2f, 2.7f, 6.5f), new Vector3(3.6f, 1.6f, -2.4f), 55f);
+            yield return Take("03_kitchen", new Vector3(10.5f, 3.0f, 2.5f), new Vector3(20f, 1.4f, 7.5f));
+            yield return Take("04_living_room", new Vector3(17.5f, 3.0f, 14.5f), new Vector3(9.5f, 1.6f, 22.5f));
+            yield return Take("05_living_cabinet", new Vector3(13.6f, 3.3f, 21.5f), new Vector3(13.6f, 3.9f, 25.4f), 50f);
+            // the storage door from the living room: shut, then while and after it opens
+            DoorController door = null; float best = 3f;
+            foreach (var d in FindObjectsByType<DoorController>(FindObjectsSortMode.None))
+            {
+                float dist = Vector2.Distance(new Vector2(d.Hinge.position.x, d.Hinge.position.z), new Vector2(22.6f, 22.8f));
+                if (dist < best) { best = dist; door = d; }
+            }
+            Debug.Log($"[Lab] storage door = {(door != null ? door.transform.root.name + "/" + door.name : "none")} at {best:F2} m");
+            Vector3 spillPos = new Vector3(17.2f, 2.8f, 21.0f), spillLook = new Vector3(23.5f, 1.8f, 22.8f);
+            yield return Take("06_storage_door_shut", spillPos, spillLook, 60f, 3f);
+            if (door != null) door.OpenDoor();
+            yield return Take("07_storage_door_opening", spillPos, spillLook, 60f, 1.2f);
+            yield return Take("08_storage_door_open", spillPos, spillLook, 60f, 4f);
+            yield return Take("08b_storage_door_open_near", new Vector3(19.6f, 2.8f, 21.6f), spillLook, 60f, 2.5f);
+            yield return Take("09_storage_doorway", new Vector3(21.2f, 2.8f, 22.6f), new Vector3(30f, 1.4f, 17f), 60f, 3f);
+            yield return Take("10_fuse_room", new Vector3(36.6f, 3.3f, 24.6f), new Vector3(25f, 1.2f, 6f), 62f);
+            yield return Take("11_fusebox", new Vector3(27.2f, 2.6f, 8.6f), new Vector3(23.3f, 3.2f, 8.5f), 55f);
+            yield return Take("12_storeroom", new Vector3(34.5f, 3.0f, 26.6f), new Vector3(25f, 1.4f, 38f));
+            yield return Take("13_library", new Vector3(40.5f, 3.0f, 22.5f), new Vector3(48f, 1.4f, 13f));
+            yield return Take("14_levers", new Vector3(26.5f, 2.8f, 15.3f), new Vector3(22.9f, 2.9f, 15.3f), 50f);
+            // with the power back on (the fuses picked up and placed, as in the smoke test)
+            foreach (var f in FindObjectsByType<ItemPickup>(FindObjectsSortMode.None)) { f.Interact(); yield return new WaitForSeconds(0.2f); }
+            var key = FindAnyObjectByType<KeyPickup>(); if (key != null) key.Interact();
+            yield return null;
+            foreach (var k in FindObjectsByType<KeyDoorInteractable>(FindObjectsSortMode.None)) { if (k.canInteract) k.Interact(); yield return new WaitForSeconds(0.2f); }
+            foreach (var p in FindObjectsByType<PlaceItemInteractable>(FindObjectsSortMode.None)) { p.Interact(); yield return new WaitForSeconds(0.2f); }
+            for (float t = 0f; t < 25f && CutscenePlayer.IsPlaying; t += Time.deltaTime) yield return null;
+            foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) if (c != cam) c.enabled = false;
+            cam.enabled = true;
+            Debug.Log($"[Lab] powered={FindAnyObjectByType<LeverPuzzle>()?.IsPowered}");
+            yield return Take("15_fuse_room_powered", new Vector3(36.6f, 3.3f, 24.6f), new Vector3(25f, 1.2f, 6f), 62f, 4f);
+            yield return Take("16_storeroom_powered", new Vector3(34.5f, 3.0f, 26.6f), new Vector3(25f, 1.4f, 38f));
+            yield return Take("17_library_powered", new Vector3(40.5f, 3.0f, 22.5f), new Vector3(48f, 1.4f, 13f));
+            yield return Take("18_doorway_powered", new Vector3(21.2f, 2.8f, 22.6f), new Vector3(30f, 1.4f, 17f));
+        }
+        else if (scene == "WhiteSpace")
+        {
+            yield return Take("20_white_space", new Vector3(0f, 1.7f, 0.5f), new Vector3(0f, 2.3f, 14f));
+            yield return Take("21_white_space_wide", new Vector3(-9f, 3.5f, -6f), new Vector3(0f, 2.5f, 12f));
+        }
+        else
+        {
+            yield return Take("30_confrontation", new Vector3(0f, 2.4f, 0.3f), new Vector3(0f, 1.9f, 6f));
+            yield return Take("31_confrontation_wide", new Vector3(-6f, 3.5f, -5f), new Vector3(0f, 1.5f, 6f));
         }
     }
 
@@ -593,6 +747,21 @@ public class LabDriver : MonoBehaviour
         View("turn_swing2", new Vector3(1.8f, 1.1f, 1.8f), new Vector3(0, 1.0f, 0), 32f);
         yield return new WaitForSeconds(1.5f);
         View("rest_hair_back", new Vector3(0.0f, 1.35f, -1.1f), new Vector3(0, 1.3f, 0), 30f);
+    }
+}
+/// <summary>Taps the final mix on the listener (lab only).</summary>
+public class AudioTap : MonoBehaviour
+{
+    readonly System.Collections.Generic.List<(float t, float e)> blocks = new System.Collections.Generic.List<(float, float)>();
+    bool recording; double started; int rate;
+    void Awake() => rate = AudioSettings.outputSampleRate;
+    public void Begin() { lock (blocks) { blocks.Clear(); started = AudioSettings.dspTime; recording = true; } }
+    public System.Collections.Generic.List<(float t, float e)> End() { lock (blocks) { recording = false; return new System.Collections.Generic.List<(float, float)>(blocks); } }
+    void OnAudioFilterRead(float[] data, int channels)
+    {
+        if (!recording) return;
+        double sum = 0; for (int i = 0; i < data.Length; i++) sum += data[i] * data[i];
+        lock (blocks) blocks.Add(((float)(AudioSettings.dspTime - started), (float)sum));
     }
 }
 #endif

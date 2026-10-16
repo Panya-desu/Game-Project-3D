@@ -76,6 +76,12 @@ public class ConfrontationDirector : MonoBehaviour
         yield return new WaitForSeconds(startDelay);
         yield return Talk(introLines);
 
+        // the world holds its breath: the ambience and the wind fall silent for a moment
+        GameAudio.Hush(1.2f);
+        WindDrift.Calm = true;
+        yield return new WaitForSeconds(1.6f);
+        WindDrift.Calm = false;
+
         // The double fades in a few metres in front of the player
         if (doppelganger != null && player != null)
         {
@@ -166,7 +172,8 @@ public class ConfrontationDirector : MonoBehaviour
                                         float m = Mathf.Clamp01(k * 1.15f);
                                         doppelganger.position = Vector3.Lerp(dStart, dEnd, m * m);
                                         // she does not step back: she reaches out towards it
-                                        if (!reached && k > 0.45f && hero != null) { reached = true; hero.Interact(); }
+                                        if (!reached && k > 0.45f && hero != null) { reached = true; hero.ReachOut(); }
+                                        WindDrift.Tension = k; // the wind rises as it rushes in
                                         if (worldLight != null) worldLight.color = Color.Lerp(Color.white, red, k);
                                     }),
             // the hit: it is gone, she is still standing
@@ -175,6 +182,7 @@ public class ConfrontationDirector : MonoBehaviour
                                     onStart: () =>
                                     {
                                         GameAudio.PlaySfx("impact");
+                                        WindDrift.Tension = 0f; // and falls still after the hit
                                         ScreenFader.Flash(new Color(0.8f, 0f, 0f, 0.8f), 0.6f);
                                         doubleView.StopRush();
                                         doppelganger.gameObject.SetActive(false);
@@ -194,6 +202,8 @@ public class ConfrontationDirector : MonoBehaviour
                                     onUpdate: k =>
                                     {
                                         if (worldLight != null) worldLight.color = Color.Lerp(red, Color.white, k);
+                                        // the last seconds before the end screen fall quiet
+                                        if (k > 0.72f && GameAudio.CurrentAmbient != null) { GameAudio.Hush(1.6f); WindDrift.Calm = true; }
                                         // she walks on, towards where it stood
                                         if (k > 0.2f) CharacterLibrary.Walk(hero, feet, feet + toDouble * 3.5f, (k - 0.2f) / 0.8f);
                                     }),

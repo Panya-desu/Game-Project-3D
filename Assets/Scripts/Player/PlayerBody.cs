@@ -8,6 +8,7 @@ using UnityEngine.SceneManagement;
 /// shadow-only body, so the camera never sees it but its shadow walks with her. Cutscenes hide it with
 /// the rest of the player's renderers (CutscenePlayer).
 /// </summary>
+[DefaultExecutionOrder(10)]
 public class PlayerBody : MonoBehaviour
 {
     CharacterController controller;
@@ -16,6 +17,13 @@ public class PlayerBody : MonoBehaviour
     Vector3 lastPos;
     float speedSmooth;
     bool shown = true;
+    float airborneTime;
+    float bodyYaw, bodyYawVelocity;
+    // footstep timing from her feet: a foot coming down to the floor is a step
+    Transform[] feet;
+    readonly float[] footLow = new float[2], footHigh = new float[2], lastStep = new float[2];
+    readonly bool[] planted = { true, true };
+    const float WalkCadenceCap = 1.35f;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Hook()
@@ -65,7 +73,42 @@ public class PlayerBody : MonoBehaviour
             r.renderingLayerMask = ShadowFocus.BodyLayer; // only the nearest lamp draws her shadow
         }
         lastPos = transform.position;
+        bodyYaw = transform.eulerAngles.y;
+        var bodyAnimator = view.GetComponentInChildren<Animator>();
+        if (bodyAnimator == null) bodyAnimator = view.GetComponentInParent<Animator>();
+        if (bodyAnimator != null && bodyAnimator.isHuman)
+            feet = new[] { bodyAnimator.GetBoneTransform(HumanBodyBones.LeftFoot), bodyAnimator.GetBoneTransform(HumanBodyBones.RightFoot) };
         WarmUpShaders(root);
+    }
+
+    /// <summary>
+    /// Footsteps on her steps: each foot's height above her root is tracked (its lowest and highest point
+    /// over the last strides), and a foot dropping into the bottom third of that range after being lifted
+    /// is a heel strike, which plays the footstep (Movement.Step). While she stands still or is in the air
+    /// the steps stay quiet (the jump has its own push-off and landing sounds).
+    /// </summary>
+    void FootSteps(bool walking)
+    {
+        if (movement == null) return;
+        bool usable = feet != null && feet[0] != null && feet[1] != null;
+        movement.StepsFromBody = usable;
+        if (!usable) return;
+        float scale = Mathf.Abs(view.transform.root.lossyScale.y);
+        float rootY = view.transform.root.position.y, dt = Time.deltaTime;
+        for (int i = 0; i < 2; i++)
+        {
+            float h = feet[i].position.y - rootY;
+            footLow[i] = h < footLow[i] ? h : Mathf.Lerp(footLow[i], h, dt * 0.4f);
+            footHigh[i] = h > footHigh[i] ? h : Mathf.Lerp(footHigh[i], h, dt * 0.4f);
+            float range = footHigh[i] - footLow[i];
+            bool down = h < footLow[i] + range * 0.3f;
+            if (walking && down && !planted[i] && range > 0.025f * scale && Time.time - lastStep[i] > 0.22f)
+            {
+                movement.Step();
+                lastStep[i] = Time.time;
+            }
+            planted[i] = down;
+        }
     }
 
     /// <summary>
@@ -98,12 +141,39 @@ public class PlayerBody : MonoBehaviour
             shown = show;
             foreach (var r in view.transform.root.GetComponentsInChildren<Renderer>(true)) r.enabled = show;
         }
+        if (!show) { lastPos = transform.position; speedSmooth = 0f; return; }
         // walk/run from the real speed (the clips are in place; the controller moves her)
         Vector3 delta = transform.position - lastPos;
         lastPos = transform.position;
         float speed = Time.deltaTime > 0f ? new Vector2(delta.x, delta.z).magnitude / Time.deltaTime : 0f;
         speedSmooth = Mathf.Lerp(speedSmooth, speed, 1f - Mathf.Exp(-10f * Time.deltaTime));
         float full = movement != null ? movement.speed : 6f;
-        view.SetLocomotion(speedSmooth < 0.2f ? 0f : Mathf.Clamp(0.45f + 0.45f * speedSmooth / full, 0f, 0.9f));
+        var motion = view.GetComponent<EchoLocomotion>();
+        bool moving = speedSmooth > 0.3f;
+        if (motion != null)
+        {
+            // a walk, never a run: the player moves faster than a real walk at her scale, so the walk cycle
+            // plays a little quicker (capped) instead of switching to the run
+            motion.maxPlaybackRate = WalkCadenceCap;
+            motion.ReleaseFacing();
+            motion.SetSpeed(moving ? 0.5f : 0f);
+        }
+        else view.SetLocomotion(moving ? 0.5f : 0f);
+        // she turns to face where the player looks, smoothly (her shadow follows the view)
+        float targetYaw = transform.eulerAngles.y;
+        bodyYaw = Mathf.SmoothDampAngle(bodyYaw, targetYaw, ref bodyYawVelocity, 0.12f);
+        view.transform.rotation = Quaternion.Euler(0f, bodyYaw, 0f);
+        if (controller != null)
+        {
+            // jump: the wind-up plays the take-off (crouch and push) while still on the ground, then the
+            // fall loop in the air and a landing; a single frame off the ground on a step is ignored
+            bool grounded = controller.isGrounded;
+            airborneTime = grounded ? 0f : airborneTime + Time.deltaTime;
+            bool windup = movement != null && movement.JumpWindup;
+            bool rising = !grounded && controller.velocity.y > 0.5f;
+            bool inAir = windup || rising || airborneTime > 0.08f;
+            view.SetAirborne(inAir, windup || rising ? 1f : controller.velocity.y);
+            FootSteps(moving && grounded && !inAir);
+        }
     }
 }
