@@ -10,6 +10,27 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Player Body")]
     public static void PlayerBody() => Start("Assets/Scenes/Level_1.unity", "player");
 
+    [MenuItem("Tools/Dev/Lab: Mix All Sounds (Level_1)")]
+    public static void MixAll() => Start("Assets/Scenes/Level_1.unity", "mixall");
+
+    [MenuItem("Tools/Dev/Lab: Cutscene Sounds (White Space)")]
+    public static void CutSoundsWhite() => Start("Assets/Scenes/WhiteSpace.unity", "cutsounds");
+
+    [MenuItem("Tools/Dev/Lab: Cutscene Sounds (Confrontation)")]
+    public static void CutSoundsConfront() => Start("Assets/Scenes/Confrontation.unity", "cutsounds");
+
+    [MenuItem("Tools/Dev/Lab: Stride Jump (Level_1)")]
+    public static void Stride() => Start("Assets/Scenes/WhiteSpace.unity", "stride");
+
+    [MenuItem("Tools/Dev/Lab: Ending Door (Level_1)")]
+    public static void EndDoor() => Start("Assets/Scenes/Level_1.unity", "enddoor");
+
+    [MenuItem("Tools/Dev/Lab: Mix Test (Level_1)")]
+    public static void MixTest() => Start("Assets/Scenes/Level_1.unity", "mix");
+
+    [MenuItem("Tools/Dev/Lab: Step Events (Level_1)")]
+    public static void Steps() => Start("Assets/Scenes/Level_1.unity", "steps");
+
     [MenuItem("Tools/Dev/Lab: Reverb Test (Level_1)")]
     public static void Reverb() => Start("Assets/Scenes/Level_1.unity", "reverb");
 

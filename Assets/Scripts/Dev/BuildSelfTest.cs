@@ -66,6 +66,7 @@ public class BuildSelfTest : MonoBehaviour
         while (Time.realtimeSinceStartup - start < 3f) { worst = Mathf.Max(worst, Time.unscaledDeltaTime); frames++; yield return null; }
         float avg = (Time.realtimeSinceStartup - start) / frames;
         Debug.Log($"[SelfTest] {label}: {1f / avg:F0} fps avg, worst frame {worst * 1000f:F0} ms");
+        HitchWatch.Note("selftest screenshot");
         ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(Application.dataPath, "..", "selftest_" + SceneManager.GetActiveScene().name + ".png"));
         yield return null;
     }

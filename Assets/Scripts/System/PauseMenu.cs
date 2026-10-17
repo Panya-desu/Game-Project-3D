@@ -119,7 +119,7 @@ public class PauseMenu : MonoBehaviour
     }
 
     private const string ControlsBody =
-        "W A S D   Walk          Space   Jump          Mouse   Look around\n" +
+        "W A S D   Walk          Shift   Run          Space   Jump          Mouse   Look around\n" +
         "E   Interact / next line          F   Phone (Notes)          F11   Full screen          Esc   Close / Pause";
 
     private CanvasGroup panelGroup;

@@ -35,21 +35,44 @@ public class CharacterLibrary : ScriptableObject
         foreach (var r in go.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         CharacterLook.Apply(go, isDouble);
         CharacterKeyLight.Add(go);
-        return go.GetComponentInChildren<EchoCharacterView>();
+        var view = go.GetComponentInChildren<EchoCharacterView>();
+        ActorFootsteps.Attach(view, isDouble); // her steps are heard in the cutscenes
+        return view;
     }
 
     /// <summary>
     /// Moves a character from a to b with the walk cycle (the clips are in place, so the root is moved here).
-    /// Call every frame with k = 0..1; she slows into idle over the last part.
+    /// Call every frame with k = 0..1 over a walk lasting <paramref name="seconds"/>. She sets off over half
+    /// a second, walks at an even pace and comes to a stop the way the player does (a quarter of a second),
+    /// so her stop (EchoCharacters' WalkStop, a step that brings the feet together in place) starts as she
+    /// arrives. The old ease slowed her over the last second: she shuffled on at a crawl and then made
+    /// her stop step after she had arrived, like one step too many.
     /// </summary>
-    public static void Walk(EchoCharacterView view, Vector3 a, Vector3 b, float k)
+    public static void Walk(EchoCharacterView view, Vector3 a, Vector3 b, float k, float seconds)
     {
         if (view == null) return;
-        // v7: reaches the end, eases in and out, and paces the steps to the real speed
-        var motion = view.GetComponent<EchoCinematicMotion>();
-        if (motion == null) motion = view.gameObject.AddComponent<EchoCinematicMotion>();
-        motion.Walk(a, b, k);
+        var motion = view.GetComponent<EchoLocomotion>();
+        float T = Mathf.Max(0.5f, seconds);
+        float ta = Mathf.Min(0.5f, T * 0.3f), td = Mathf.Min(0.25f, T * 0.2f);
+        float full = T - ta * 0.5f - td * 0.5f;
+        float t = Mathf.Clamp01(k) * T;
+        float s = t < ta ? 0.5f * t * t / ta
+                : t < T - td ? ta * 0.5f + (t - ta)
+                : full - (T - t) * (T - t) / (2f * td);
+        Vector3 next = Vector3.Lerp(a, b, Mathf.Clamp01(s / full));
+        var state = view.GetComponent<CutsceneWalkState>() ?? view.gameObject.AddComponent<CutsceneWalkState>();
+        bool reset = state.lastK < 0f || k < state.lastK;
+        Vector3 velocity = !reset && Time.deltaTime > 0f && k < 1f ? (next - view.transform.position) / Time.deltaTime : Vector3.zero;
+        view.transform.position = next;
+        if (motion != null)
+        {
+            motion.SetVelocity(velocity);
+            motion.SetFacing(b - a);
+        }
+        state.lastK = k;
     }
+
+    class CutsceneWalkState : MonoBehaviour { public float lastK = -1f; }
 
     /// <summary>The floor under a point (ignores triggers and the player capsule).</summary>
     public static Vector3 GroundBelow(Vector3 p)

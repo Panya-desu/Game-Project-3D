@@ -31,6 +31,12 @@ public static class UiTheme
         // characters the font does not have (arrows, symbols) fall back to the default TMP font
         if (TMP_Settings.defaultFontAsset != null)
             asset.fallbackFontAssetTable = new List<TMP_FontAsset> { TMP_Settings.defaultFontAsset };
+        // render every everyday character into the atlas now (at load, behind the black fade): added one
+        // by one as new letters first appear, they stalled a frame (the title's "Click to Continue")
+        var common = new System.Text.StringBuilder();
+        for (char c = ' '; c <= '~'; c++) common.Append(c);
+        common.Append("…‘’“”—–•·°×");
+        asset.TryAddCharacters(common.ToString());
         return asset;
     }
 

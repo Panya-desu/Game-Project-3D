@@ -55,6 +55,7 @@ public class PhoneInteractable : Interactable, ISaveable
         }
         else
         {
+            GameAudio.PlaySfx("pickup"); // (with a quest, QuestInteractable plays it)
             gameObject.SetActive(false);
         }
     }

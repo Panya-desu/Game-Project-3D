@@ -70,6 +70,7 @@ public class LevelCutscenes : MonoBehaviour
 
     // ───────────── 1. waking up ─────────────
 
+    bool wakeLookStarted;
     void WakeUp()
     {
         var player = FindAnyObjectByType<Movement>();
@@ -95,7 +96,8 @@ public class LevelCutscenes : MonoBehaviour
             new CutscenePlayer.Shot(feet + toRoom * 2.4f - right * 0.9f + Vector3.up * 1.15f * sc,
                                     feet + toRoom * 2.8f + right * 0.7f + Vector3.up * 1.35f * sc,
                                     head - Vector3.up * 0.05f * sc, head, 4.5f,
-                                    onStart: () => { if (hero != null) hero.LookAround(); }),
+                                    onStart: () => { if (hero != null) hero.WakeIdle(); },
+                                    onUpdate: k => { if (hero != null && k > .45f && !wakeLookStarted) { wakeLookStarted = true; hero.LookAround(); } }),
             // the stopped clock on the desk
             new CutscenePlayer.Shot(new Vector3(3.7f, 2.35f, 1.6f), new Vector3(3.5f, 2.05f, -0.5f),
                                     clock + Vector3.up * 0.1f, clock, 3.5f),
@@ -138,13 +140,27 @@ public class LevelCutscenes : MonoBehaviour
         root.SetParent(transform, false);
         Vector3 at = door.transform.position;
         WhiteSpaceFlair.MakeGateMotes(root, at);
+        // the light inside the doorway was plain white, which the storage room's cold grading turned blue:
+        // warm gold, as the gates of the White Space. Not too bright: the storage grading exposes it up
+        // (+0.9), so a strong glow, or the room's cold ceiling lights on its lit surface, burnt it out to
+        // white with a cold bloom and it read blue once the door was open. Only its own glow, a deeper
+        // orange gold, since the cold grading pulls it towards yellow.
+        var gold = new Color(1f, 0.5f, 0.17f);
+        foreach (var r in ending.GetComponentsInChildren<Renderer>(true))
+            foreach (var m in r.materials)
+                if (m != null && m.name.StartsWith("glowing_white"))
+                {
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", Color.black);
+                    if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0f);
+                    if (m.HasProperty("_EmissionColor")) { m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", gold * 0.9f); }
+                }
         var lightGo = new GameObject("DoorLight");
         lightGo.transform.SetParent(root, false);
         lightGo.transform.position = at + Vector3.up * 1.4f;
         var l = lightGo.AddComponent<Light>();
         l.type = LightType.Point;
-        l.color = new Color(1f, 0.84f, 0.62f);
-        l.intensity = 1.4f;
+        l.color = new Color(1f, 0.8f, 0.55f);
+        l.intensity = 2f;
         l.range = 4.5f;
         l.shadows = LightShadows.None;
         var pulse = lightGo.AddComponent<PulseGlow>();
@@ -152,11 +168,14 @@ public class LevelCutscenes : MonoBehaviour
         var shimmer = new GameObject("DoorShimmer").AddComponent<AudioSource>();
         shimmer.transform.SetParent(root, false);
         shimmer.transform.position = at + Vector3.up * 1.4f;
-        shimmer.clip = Resources.Load<AudioClip>("Audio/shimmer");
+        shimmer.clip = GameAudio.Mixed("shimmer", out float shimmerGain);
+        doorShimmerGain = shimmerGain;
         shimmer.spatialBlend = 1f; shimmer.rolloffMode = AudioRolloffMode.Linear; shimmer.minDistance = 1.5f; shimmer.maxDistance = 10f;
         shimmer.playOnAwake = false;
         StartCoroutine(ShimmerNowAndThen(shimmer));
     }
+
+    float doorShimmerGain = 1f;
 
     System.Collections.IEnumerator ShimmerNowAndThen(AudioSource s)
     {
@@ -165,7 +184,7 @@ public class LevelCutscenes : MonoBehaviour
             yield return new WaitForSeconds(Random.Range(5f, 9f));
             if (s == null || s.clip == null || PauseMenu.IsPaused) continue;
             s.pitch = Random.Range(0.92f, 1.08f);
-            s.volume = 0.25f;
+            s.volume = 0.6f * doorShimmerGain;
             s.Play();
         }
     }

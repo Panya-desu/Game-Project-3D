@@ -10,19 +10,20 @@ namespace EchoCharacters
     public sealed partial class EchoSecondaryMotion : MonoBehaviour
     {
         [Range(0, 1)] public float drag = .28f;
-        public bool layerGuard = true; // Kept for CharacterLook compatibility.
+        public bool layerGuard = false; // Kept for CharacterLook compatibility.
         // Game: the cloth contact data (shirt probes, skirt/hand/leg contacts) is built on the first frame that
         // needs it, and only when layerGuard is on. Building it in OnEnable cost ~350 ms per spawned character
         // (a stall at the start of every cutscene), and the per-frame contact checks ~4 ms per character.
         bool guardReady; Animator guardAnimator;
+        public int ContactBuildCount {get;private set;}
         public float stiffness = 65f;
         [HideInInspector] public int[] shirtOuterVertices,shirtHemRimVertices;
-        [Range(0, 20)] public float skirtMaxAngle = 4f;
+        [Range(0, 20)] public float skirtMaxAngle = .5f;
         [Range(0, 10)] public float hairMaxAngle = 4f;
         public float thighRadius = .085f;
-        [Range(0, 6)] public float shirtMaxAngle = 3.5f;
-        [Range(0, 2)] public float sleeveMaxAngle = 1.1f;
-        [Range(0, 1)] public float collarMaxAngle = .25f;
+        [Range(0, 6)] public float shirtMaxAngle = 1.5f;
+        [Range(0, 2)] public float sleeveMaxAngle = .7f;
+        [Range(0, 1)] public float collarMaxAngle = .15f;
         public float torsoRadius = .095f, upperArmRadius = .044f;
         public float LastShirtBend { get; private set; }
         public float MaxShirtProbeDisplacement { get; private set; }
@@ -68,6 +69,7 @@ namespace EchoCharacters
         }
         Vector3 Up => transform.up.normalized;
         Vector3 previousRoot;
+        float lastVerticalSpeed,verticalAcceleration;EchoJumpMotion jumpMotion;
         // ENDPOINT_SPEC is generated from the Blender bone lengths, in metres.
         static readonly Dictionary<string, float> Lengths = new Dictionary<string, float>
         {
@@ -196,7 +198,7 @@ namespace EchoCharacters
             foreach (var j in joints) j.animatedLocal = j.bone.localRotation;
             if(layerGuard)
             {
-                if(!guardReady){SetupShirtGuard();SetupSkirtContacts();SetupContactReferences(guardAnimator);guardReady=true;}
+                if(!guardReady){ContactBuildCount++;SetupShirtGuard();SetupSkirtContacts();SetupContactReferences(guardAnimator);guardReady=true;}
                 CacheHandContacts();CacheLegContacts();if(HasAuthoredPose){UpdateSkirtSurface();CaptureShirtReferences(true);CaptureSkirtContactBaselines();}
             }
             foreach (var j in joints)
@@ -208,7 +210,9 @@ namespace EchoCharacters
                 Vector3 rest = head + animated * length;
                 if (!j.ready || teleport) { j.tip = j.previous = rest; j.velocity=Vector3.zero; j.ready = true; continue; }
                 if (dt <= 0) continue;
-                Vector3 next = Predict(j,rest,Vector3.down*(j.skirt?.25f:.03f)*scale,dt);
+                if(!jumpMotion)jumpMotion=GetComponent<EchoJumpMotion>();
+                float airForce=jumpMotion&&jumpMotion.Airborne?Mathf.Clamp(-jumpMotion.VerticalVelocity*.025f,-.15f,.15f):0;
+                Vector3 next = Predict(j,rest,Vector3.down*((j.skirt?.25f:.03f)-airForce)*scale,dt);
                 Vector3 direction = (next - head).normalized;
                 if (direction.sqrMagnitude < .1f) direction = animated;
                 next = head + direction * length;
@@ -349,7 +353,7 @@ namespace EchoCharacters
             {p.reference=SkinPoint(p.vertex);p.capsule=CapsuleDistance(j,p.reference);p.skirt=j.cloth==1?SkirtClearance(p.reference):float.PositiveInfinity;if(baseline||!HasAuthoredPose)p.authoredSkirt=p.skirt;p.handGap=HandGap(p.reference);p.legGap=LegDistance(p.reference);}
         }
         bool SafeShirt(Joint j)
-        {RefreshSkinMatrices(j);
+        {if(!layerGuard)return true;RefreshSkinMatrices(j);
             float scale=Mathf.Abs(transform.lossyScale.y),limit=(j.cloth==1?.006f:j.cloth==2?.0012f:.0003f)*scale;
             foreach(var p in j.probes)
             {

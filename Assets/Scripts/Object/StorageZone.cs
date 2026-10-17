@@ -11,7 +11,8 @@ using UnityEngine.Rendering;
 /// <see cref="Weight"/> for the blackout grading.
 /// The dim also spills out of the doorway with the storage door: while the door is shut the living room
 /// keeps its own look (nothing to peek at), and as the door swings open the darkness creeps out into the
-/// living room over a few seconds, up to 7 m before the door, so the player sees what waits inside.
+/// living room within a second (all of it by the time the door is a third open, so even standing right
+/// at the door there is no bright room to peek at), up to 7 m before the door: the player sees what waits inside.
 /// </summary>
 public class StorageZone : MonoBehaviour
 {
@@ -20,8 +21,9 @@ public class StorageZone : MonoBehaviour
     static readonly Vector2 Doorway = new Vector2(22.6f, 22.8f);   // the door from the living room (x, z)
     const float FadeAfter = 4.5f;                      // metres into the wing until it is complete
     const float ShutBefore = 0.6f, OpenBefore = 7f;    // metres before the doorway it starts: door shut / open
-    const float SpillSeconds = 3f;                     // how long the darkness takes to creep out
-    const float SpillAtDoor = 0.6f;                    // how dark it gets right at the open door
+    const float SpillSeconds = 0.8f;                   // how long the darkness takes to creep out (quick: no peeking)
+    const float SpillLead = 0.3f;                      // the dark is all out once the door is this far open
+    const float SpillAtDoor = 0.8f;                    // how dark it gets right at the open door
 
     /// <summary>0 = storage door shut, 1 = open (eased); outside play mode the door counts as open.</summary>
     public static float Spill { get; private set; } = 1f;
@@ -48,6 +50,17 @@ public class StorageZone : MonoBehaviour
         return Mathf.Lerp(atDoor, 1f, Mathf.SmoothStep(0f, 1f, along / FadeAfter));
     }
 
+    /// <summary>
+    /// How much of a sound made inside the wing reaches a listener at p: all of it inside, and in the house
+    /// only a little through the open storage door, gone a few metres away (the walls keep the rest in).
+    /// </summary>
+    public static float HeardFromWing(Vector3 p)
+    {
+        if (Wing.Contains(p)) return 1f;
+        float d = Vector2.Distance(new Vector2(p.x, p.z), Doorway);
+        return 0.5f * Spill * (1f - Mathf.SmoothStep(0f, 1f, d / 4f));
+    }
+
     public static float CameraWeight()
     {
         var cam = Camera.main;
@@ -71,11 +84,11 @@ public class StorageZone : MonoBehaviour
     {
         if (lastFrame != Time.frameCount)
         {
-            float open = door == null ? 1f : door.Progress;
+            float open = door == null ? 1f : Mathf.Clamp01(door.Progress / SpillLead);
             Spill = lastFrame < 0 ? open : Mathf.MoveTowards(Spill, open, Time.deltaTime / SpillSeconds);
             float target = CameraWeight();
             // the first frame of a scene starts where the camera is; after that it eases (no jumps)
-            Current = lastFrame < 0 || Time.frameCount - lastFrame > 2 ? target : Mathf.MoveTowards(Current, target, Time.deltaTime * 1.2f);
+            Current = lastFrame < 0 || Time.frameCount - lastFrame > 2 ? target : Mathf.MoveTowards(Current, target, Time.deltaTime * 1.8f);
             lastFrame = Time.frameCount;
         }
         if (volume != null) volume.weight = Current;

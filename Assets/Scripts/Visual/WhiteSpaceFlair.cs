@@ -15,6 +15,7 @@ public class WhiteSpaceFlair : MonoBehaviour
     ParticleSystem ripples, motes;
     Transform gate;
     AudioSource shimmer;
+    float shimmerGain = 1f;
     float nextShimmer;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -53,13 +54,17 @@ public class WhiteSpaceFlair : MonoBehaviour
             shimmer.rolloffMode = AudioRolloffMode.Linear;
             shimmer.minDistance = 2f;
             shimmer.maxDistance = 16f;
-            shimmer.clip = Resources.Load<AudioClip>("Audio/shimmer");
+            shimmer.clip = GameAudio.Mixed("shimmer", out shimmerGain);
             nextShimmer = Time.time + 3f;
         }
         Movement.Stepped += OnStep;
+        ActorFootsteps.Stepped += OnActorStep;
     }
 
-    void OnDestroy() => Movement.Stepped -= OnStep;
+    void OnDestroy() { Movement.Stepped -= OnStep; ActorFootsteps.Stepped -= OnActorStep; }
+
+    // her steps in the cutscenes (walking to the gates, the ending) ring the water too
+    void OnActorStep(Vector3 at, float strength) => Ring(CharacterLibrary.GroundBelow(at + Vector3.up) + Vector3.up * 0.03f, strength);
 
     // a ring under every footstep (Movement plays them on her steps), a bigger one for a landing
     void OnStep(Vector3 at, float strength)
@@ -76,7 +81,7 @@ public class WhiteSpaceFlair : MonoBehaviour
         {
             nextShimmer = Time.time + Random.Range(5f, 9f);
             shimmer.pitch = Random.Range(0.92f, 1.08f);
-            shimmer.volume = 0.22f;
+            shimmer.volume = 0.6f * shimmerGain;
             shimmer.Play();
         }
 

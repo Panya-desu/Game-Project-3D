@@ -12,6 +12,7 @@ namespace EchoCharacters
         [SerializeField] bool isDouble;
         public Animator Animator => animator;
         public bool IsDouble => isDouble;
+        public EchoFoot JumpLeadFoot => GetComponent<EchoJumpMotion>()?.JumpLeadFoot ?? EchoFoot.None;
 
         public void Configure(Animator target, GameObject frame, GameObject lens, bool dark)
         { animator = target; glasses = frame; lenses = lens; isDouble = dark; }
@@ -25,14 +26,24 @@ namespace EchoCharacters
 
         public void SetTalking(bool talking)
         { if (animator) animator.SetBool("Talking", talking); }
-        bool airborne;
-        public void SetAirborne(bool value,float verticalVelocity=0)
-        {
-            if(!animator||value==airborne)return;
-            airborne=value;string state=value?(verticalVelocity>0?"JumpStart":"FallLoop"):"Land";
-            int hash=Animator.StringToHash("Base Layer."+state);
-            if(animator.HasState(0,hash))animator.CrossFadeInFixedTime(hash,.10f,0,0);
-        }
+        public void BeginJump(){GetComponent<EchoJumpMotion>()?.BeginJump();}
+        public void BeginJump(Vector2 localVelocity){GetComponent<EchoJumpMotion>()?.BeginJump(localVelocity);}
+        public void SetAirborne(bool value,float verticalVelocity=0){GetComponent<EchoJumpMotion>()?.SetAirborne(value,verticalVelocity);}
+        public void Landed(float fallHeight){GetComponent<EchoJumpMotion>()?.Landed(fallHeight);}
+        public void Landed(float fallHeight,Vector2 localVelocity){GetComponent<EchoJumpMotion>()?.Landed(fallHeight,localVelocity);}
+        public void PlayGesture(string clip,float fade=.16f){var a=GetComponentInChildren<Animator>();if(a&&a.HasState(0,Animator.StringToHash("Base Layer."+clip)))a.CrossFadeInFixedTime(clip,fade,0,0);}
+        public void HitReact(){GetComponent<EchoEndingMotion>()?.HitReact();}
+        public void Startle(){GetComponent<EchoEndingMotion>()?.Startle();}
+        public void WakeIdle(){PlayGesture("WakeIdle");}
+        public void GazeUp(){PlayGesture("GazeUp");}
+        public void ReachDoor(){PlayGesture("ReachDoor");}
+        public void TalkGesture(int variant=1){SetTalking(true);PlayGesture("TalkGesture"+Mathf.Clamp(variant,1,3));}
+        public void Nod(){PlayGesture("Nod");}
+        public void ShakeHead(){PlayGesture("ShakeHead");}
+        public void Sigh(){PlayGesture("Sigh");}
+        public void ResolveIdle(){GetComponent<EchoEndingMotion>()?.ResolveIdle();}
+        public void DoubleVanish(){GetComponent<EchoEndingMotion>()?.DoubleVanish();}
+        public void SetRunning(bool enabled){GetComponent<EchoLocomotion>()?.SetRunning(enabled);}
         public void ReachOut()
         {if(animator)animator.CrossFadeInFixedTime("ReachOut",.15f,0,0);}
         public void Interact() { if (animator) animator.SetTrigger("Interact"); }

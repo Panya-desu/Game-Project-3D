@@ -33,7 +33,7 @@ public class SmokeTestDriver : MonoBehaviour
     void OnLog(string msg, string stack, LogType type)
     {
         if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
-        if (msg.Contains("[Licensing") || msg.Contains("Unity VCS") || stack.Contains("UnityEditor.Search")) return;
+        if (msg.Contains("[Licensing") || msg.Contains("Unity VCS") || stack.Contains("UnityEditor.Search") || stack.Contains("UnityEditor.WindowLayout")) return; // the editor itself (saving its window layout on exit)
         errors++;
         Debug.Log("[Smoke] CAPTURED ERROR: " + msg + "\n" + stack);
     }
@@ -247,7 +247,7 @@ public class SmokeTestDriver : MonoBehaviour
                 if (dist < 0.5f) break;
                 if (dist < best - 0.2f) { best = dist; last = Time.time; }
                 if (Time.time - last > 2f) { walkOk = false; walkEnd = player.transform.position; yield break; }
-                cc.Move(d.normalized * 5f * Time.deltaTime);
+                cc.Move((d.normalized * 5f + Vector3.down * 2f) * Time.deltaTime); // with gravity, as the motor moves her
                 yield return null;
             }
         }
@@ -256,6 +256,9 @@ public class SmokeTestDriver : MonoBehaviour
 
     IEnumerator Run()
     {
+        HitchWatch.Enable();
+        var everyClip = new System.Collections.Generic.HashSet<string>();
+        GameAudio.Played += n => everyClip.Add(n);
         // ── Title screen ──
         Check(Scene == "Main", "starts on the title screen");
         var title = Find<TitleScreen>();
@@ -429,14 +432,22 @@ public class SmokeTestDriver : MonoBehaviour
         yield return Walk(new Vector3(34.6f, 0, 27.5f), new Vector3(34.6f, 0, 23.5f), new Vector3(36f, 0, 21.8f), new Vector3(40f, 0, 21.8f), new Vector3(43f, 0, 19f));
         Check(walkOk, "library door opens and the player walks in (stopped at " + walkEnd + ")");
 
+        var heard = new System.Collections.Generic.List<string>();
+        System.Action<string> listen = n => heard.Add(n);
+        GameAudio.Played += listen;
         foreach (var f in FindObjectsByType<ItemPickup>(FindObjectsSortMode.None)) { f.Interact(); yield return new WaitForSeconds(0.3f); }
+        Check(heard.Contains("pickup"), "picking up a fuse plays its sound");
         yield return WaitFor(() => Quest == "Restore the power", 6f);
         Check(Quest == "Restore the power", "three fuses found");
+        heard.Clear();
         Find<KeyPickup>().Interact();
         yield return null;
+        Check(heard.Contains("key_pickup"), "picking up the key plays its sound (real key jingle)");
         foreach (var k in FindObjectsByType<KeyDoorInteractable>(FindObjectsSortMode.None)) { if (k.canInteract) k.Interact(); yield return new WaitForSeconds(0.3f); }
         int cutscenesBefore = CutscenePlayer.Played;
+        heard.Clear();
         foreach (var s in FindObjectsByType<PlaceItemInteractable>(FindObjectsSortMode.None)) { s.Interact(); yield return new WaitForSeconds(0.3f); }
+        Check(heard.FindAll(n => n == "fuse_insert").Count >= 3, $"placing each fuse plays its sound ({heard.FindAll(n => n == "fuse_insert").Count} of 3)");
         var puzzle = Find<LeverPuzzle>();
         Check(puzzle.IsPowered, "all fuses placed: power on");
         yield return WaitFor(() => CutscenePlayer.Played > cutscenesBefore, 3f);
@@ -453,7 +464,10 @@ public class SmokeTestDriver : MonoBehaviour
         wrong.Interact();
         yield return new WaitForSeconds(1.5f);
         Check(!puzzle.IsSolved, "wrong lever order resets the puzzle");
+        heard.Clear();
         foreach (var l in levers) { l.Interact(); yield return new WaitForSeconds(0.4f); }
+        Check(heard.FindAll(n => n == "lever_pull").Count >= levers.Length, "every lever plays its sound");
+        GameAudio.Played -= listen;
         yield return WaitFor(() => Quest == "Go deeper", 6f);
         Check(puzzle.IsSolved && Quest == "Go deeper", "symbol order solves the lever puzzle");
         Check(CutscenePlayer.Played >= 3, "door cutscene plays when the levers are solved");
@@ -564,6 +578,11 @@ public class SmokeTestDriver : MonoBehaviour
         yield return WaitFor(() => Scene == "Level_1", 8f);
         yield return Settle(1f);
         Check(!RunTimer.TimedOut && RunTimer.Running && RunTimer.Elapsed < 5f, "Try Again starts the house over with a full clock");
+        var all = new System.Collections.Generic.List<string>();
+        foreach (var c in Resources.LoadAll<AudioClip>("Audio")) if (!c.name.StartsWith("amb_")) all.Add(c.name);
+        all.Sort();
+        Debug.Log("[Smoke] sounds heard during the run: " + string.Join(", ", everyClip));
+        Debug.Log("[Smoke] sounds never heard: " + string.Join(", ", all.FindAll(n => !everyClip.Contains(n))));
     }
 }
 #endif

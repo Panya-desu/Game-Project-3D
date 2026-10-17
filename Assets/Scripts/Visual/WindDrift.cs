@@ -73,7 +73,7 @@ public class WindDrift : MonoBehaviour
         }
         if (wind != null && wind.clip != null)
         {
-            float target = Calm ? 0f : (confrontation ? 0.32f : 0.22f) * (0.55f + 0.6f * gust) + Tension * 0.35f;
+            float target = Calm ? 0f : (confrontation ? 0.2f : 0.13f) * (0.55f + 0.6f * gust) + Tension * 0.25f; // under the sounds, like the ambience
             wind.volume = Mathf.MoveTowards(wind.volume, target, Time.deltaTime * (Calm ? 0.4f : 0.25f));
         }
     }

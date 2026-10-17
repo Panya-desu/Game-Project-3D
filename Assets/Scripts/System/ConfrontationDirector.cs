@@ -58,6 +58,7 @@ public class ConfrontationDirector : MonoBehaviour
         model.transform.localScale = new Vector3(s / Mathf.Max(0.001f, ps.x), s / Mathf.Max(0.001f, ps.y), s / Mathf.Max(0.001f, ps.z));
         model.transform.position = new Vector3(doppelganger.position.x, ground.y, doppelganger.position.z);
         doubleView = model.GetComponentInChildren<EchoCharacterView>();
+        ActorFootsteps.Attach(doubleView, heavy: true); // its rushing steps on the water
     }
 
     IEnumerator Talk(DialogueLine[] lines)
@@ -111,7 +112,7 @@ public class ConfrontationDirector : MonoBehaviour
         // It rushes the player
         if (doubleView != null) doubleView.Rush();
         GameState.IsCutscene = true;
-        GameAudio.PlaySfx("heartbeat");
+        StartCoroutine(Heartbeats(rushSeconds)); // her heart races as it rushes in
         if (doppelganger != null && player != null)
         {
             Vector3 start = doppelganger.position;
@@ -160,13 +161,17 @@ public class ConfrontationDirector : MonoBehaviour
         Vector3 dEnd = new Vector3(feet.x, dStart.y, feet.z) + toDouble * 0.9f;
         Color red = new Color(0.6f, 0.15f, 0.15f);
         bool reached = false;
+        Vector3 walkStart = feet;
+        // HitReact steps her back a little: the motion is handed to us to move her (it is not pulled back)
+        var endingMotion = hero != null ? hero.GetComponent<EchoEndingMotion>() : null;
+        if (endingMotion != null) endingMotion.MotorDisplacement += delta => hero.transform.root.position += delta;
 
         var shots = new[]
         {
             // it rushes her
             new CutscenePlayer.Shot(feet + right * 4.6f + toDouble * 2.6f + Vector3.up * 1.4f, feet + right * 3.6f + toDouble * 1.4f + Vector3.up * 1.25f,
                                     feet + toDouble * 3.2f + Vector3.up * 1.1f, feet + toDouble * 0.6f + Vector3.up * 1.2f, rushSeconds + 0.4f,
-                                    onStart: () => { doubleView.Rush(); GameAudio.PlaySfx("heartbeat"); },
+                                    onStart: () => { doubleView.Rush(); StartCoroutine(Heartbeats(rushSeconds + 0.4f)); },
                                     onUpdate: k =>
                                     {
                                         float m = Mathf.Clamp01(k * 1.15f);
@@ -185,9 +190,10 @@ public class ConfrontationDirector : MonoBehaviour
                                         WindDrift.Tension = 0f; // and falls still after the hit
                                         ScreenFader.Flash(new Color(0.8f, 0f, 0f, 0.8f), 0.6f);
                                         doubleView.StopRush();
-                                        doppelganger.gameObject.SetActive(false);
+                                        doubleView.DoubleVanish();
+                                        StartCoroutine(HideDoubleAfterVanish());
                                         if (heroLook != null) heroLook.LookAt(null);
-                                        if (hero != null) hero.SetTalking(true);
+                                        if (hero != null) hero.HitReact();
                                         CutscenePlayer.Caption("If remembering hurts... then let it hurt.", 3.2f);
                                     }),
             // alone on the water, the light comes back
@@ -196,7 +202,7 @@ public class ConfrontationDirector : MonoBehaviour
                                     onStart: () =>
                                     {
                                         GameAudio.PlaySfx("memory_whoosh");
-                                        if (hero != null) hero.SetTalking(false);
+                                        if (hero != null) { hero.SetTalking(false); walkStart = hero.transform.position; }
                                         CutscenePlayer.Caption("Wait for me, Evie. I'm going to remember.", 5.5f);
                                     },
                                     onUpdate: k =>
@@ -205,10 +211,27 @@ public class ConfrontationDirector : MonoBehaviour
                                         // the last seconds before the end screen fall quiet
                                         if (k > 0.72f && GameAudio.CurrentAmbient != null) { GameAudio.Hush(1.6f); WindDrift.Calm = true; }
                                         // she walks on, towards where it stood
-                                        if (k > 0.2f) CharacterLibrary.Walk(hero, feet, feet + toDouble * 3.5f, (k - 0.2f) / 0.8f);
+                                        if (k > 0.2f) CharacterLibrary.Walk(hero, walkStart, walkStart + toDouble * 3.5f, (k - 0.2f) / 0.8f, 6.5f * 0.8f);
                                     }),
         };
         CutscenePlayer.Play(shots, () => ScreenFader.LoadScene(nextScene, 2.5f, Color.white), returnControl: false);
+    }
+
+    // one beat each (a real recorded heartbeat), quicker and quicker while it comes
+    IEnumerator Heartbeats(float seconds)
+    {
+        float gap = 0.8f;
+        for (float t = 0f; t < seconds; t += gap, gap = Mathf.Max(0.5f, gap * 0.85f))
+        {
+            GameAudio.PlaySfx("heartbeat");
+            yield return new WaitForSeconds(gap);
+        }
+    }
+
+    IEnumerator HideDoubleAfterVanish()
+    {
+        yield return new WaitForSeconds(.8f);
+        if (doppelganger != null) doppelganger.gameObject.SetActive(false);
     }
 
     IEnumerator TurnPlayerToward(Transform target, float seconds)

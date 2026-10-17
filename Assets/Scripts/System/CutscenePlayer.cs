@@ -132,11 +132,34 @@ public class CutscenePlayer : MonoBehaviour
             fade.alpha = 1f;
             StartCoroutine(Fade(0f, 1.6f));
         }
+        // while the screen is still covered, look through every shot once: the first sight of a close-up
+        // (the clock, her hair from behind) otherwise stalled a frame at each cut of the waking cutscene
+        // (into a texture of the screen's size: rendered straight to the screen outside the frame loop, the
+        // UI overlay pass failed whenever the editor's game view was another size)
+        if (ScreenFader.Opaque)
+        {
+            var rt = RenderTexture.GetTemporary(Mathf.Max(64, Screen.width), Mathf.Max(64, Screen.height), 24);
+            var screenTarget = cam.targetTexture;
+            foreach (var w in shots)
+            {
+                cam.targetTexture = rt;
+                cam.transform.position = w.from; cam.transform.rotation = Quaternion.LookRotation(w.lookFrom - w.from);
+                cam.Render();
+                cam.transform.position = w.to; cam.transform.rotation = Quaternion.LookRotation(w.lookTo - w.to);
+                cam.Render();
+                cam.targetTexture = screenTarget;
+                yield return null;
+            }
+            cam.targetTexture = screenTarget;
+            RenderTexture.ReleaseTemporary(rt);
+        }
+
         yield return Bars(1f, 0.5f);
 
         for (int i = 0; i < shots.Count && !skip; i++)
         {
             var s = shots[i];
+            HitchWatch.Note("cutscene shot " + i);
             s.onStart?.Invoke();
             for (float t = 0; t < s.seconds && !skip; t += Time.deltaTime)
             {

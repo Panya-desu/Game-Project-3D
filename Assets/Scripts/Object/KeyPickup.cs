@@ -28,9 +28,9 @@ public class KeyPickup : Interactable, ISaveable
         // เก็บไปแล้วใน save → ซ่อน
         if (SaveSystem.TryLoad(this, out SaveState state) && !state.active)
         {
-            GameAudio.PlaySfx("pickup");
-        if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
-        gameObject.SetActive(false);
+            // already taken in the save: no sound here (the pickup sound belongs to Interact)
+            if (QuestManager.Instance != null) QuestManager.Instance.CompleteObjectiveByTarget(gameObject);
+            gameObject.SetActive(false);
         }
     }
 
@@ -50,6 +50,7 @@ public class KeyPickup : Interactable, ISaveable
 
         // เก็บกุญแจ
         collectedKeys.Add(keyID);
+        GameAudio.PlaySfx("key_pickup"); // a real ring of keys
         Debug.Log("[KeyPickup] Collected key: " + keyID);
 
         // หายไปจาก scene

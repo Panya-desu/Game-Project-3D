@@ -75,6 +75,22 @@ public class ScreenFader : MonoBehaviour
     }
 
     /// <summary>Fade the screen to a color and stay there (used before the ending text).</summary>
+    /// <summary>Keep the screen covered (stops the scene's fade-in) until Release.</summary>
+    public static void Hold()
+    {
+        if (Instance == null) return;
+        Instance.StopAllCoroutines();
+        Color c = Instance.overlay.color; c.a = 1f; Instance.overlay.color = c;
+    }
+
+    /// <summary>Fade in from a Hold, in the cover's own colour.</summary>
+    public static void Release(float seconds)
+    {
+        if (Instance == null) return;
+        Color c = Instance.overlay.color;
+        Instance.StartCoroutine(Instance.Fade(c, new Color(c.r, c.g, c.b, 0f), seconds));
+    }
+
     public static Coroutine FadeTo(Color color, float seconds)
     {
         if (Instance == null) return null;

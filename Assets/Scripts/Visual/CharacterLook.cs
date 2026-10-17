@@ -31,11 +31,11 @@ public class CharacterLook : MonoBehaviour
         // gentler than the package defaults: with 8 degrees per joint the three-joint skirt chains plus the
         // authored skirt curves flipped the back of the skirt up when walking (limits are read in OnEnable)
         secondary.enabled = false;
-        secondary.skirtMaxAngle = 4f;
-        secondary.hairMaxAngle = 5f;
+        secondary.skirtMaxAngle = 1f;
+        secondary.hairMaxAngle = 4f;
         secondary.stiffness = 65f;
         secondary.drag = 0.35f;
-        secondary.shirtMaxAngle = 2.5f;
+        secondary.shirtMaxAngle = 1.5f;
         secondary.layerGuard = false; // the per-frame cloth checks cost ~40 ms per character (title screen lag)
         secondary.enabled = true;
         var shader = CharacterLibrary.Get() != null ? CharacterLibrary.Get().toonShader : null;
@@ -121,62 +121,6 @@ public class CharacterLook : MonoBehaviour
     void Awake()
     {
         animator = GetComponent<Animator>();
-        SmoothChinSeam();
-    }
-
-    static readonly Dictionary<Mesh, Mesh> smoothed = new Dictionary<Mesh, Mesh>();
-
-    /// <summary>
-    /// Her face is skinned 100% to the head bone, but the neck right under the chin only ~45%, so the
-    /// weight jumped from 0.45 to 1 at the jaw line: whenever the head turned (LookAround turns it ~30
-    /// degrees) the skin folded along that seam into a second chin and the jaw looked bent. The head
-    /// weight of the blended neck skin is rescaled so it rises smoothly to 1 at the jaw (the neck below
-    /// still blends into the shoulders). Done once per mesh, on a copy; the asset is untouched.
-    /// </summary>
-    void SmoothChinSeam()
-    {
-        if (animator == null || !animator.isHuman) return;
-        var head = animator.GetBoneTransform(HumanBodyBones.Head);
-        if (head == null || head.parent == null) return;
-        Transform neck = head.parent;
-        foreach (var smr in transform.root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-        {
-            var src = smr.sharedMesh;
-            if (src == null) continue;
-            if (smoothed.TryGetValue(src, out var done)) { if (done != null) smr.sharedMesh = done; continue; }
-            int hi = System.Array.IndexOf(smr.bones, head), ni = System.Array.IndexOf(smr.bones, neck);
-            smoothed[src] = null;
-            if (hi < 0 || ni < 0 || !src.isReadable) continue;
-            var bw = src.boneWeights;
-            float top = 0f; // the highest head weight on the blended neck skin (just under the jaw)
-            foreach (var b in bw) if (Weight(b, ni) > 0.01f) top = Mathf.Max(top, Weight(b, hi));
-            if (top <= 0.05f || top >= 0.95f) continue;
-            for (int i = 0; i < bw.Length; i++)
-            {
-                float wh = Weight(bw[i], hi), wn = Weight(bw[i], ni);
-                if (wh <= 0f || wn <= 0.01f) continue;
-                float t = Mathf.Clamp01(wh / top);
-                float target = Mathf.Min(wh + wn, Mathf.Lerp(wh, 1f, t * t)); // only the top of the band moves much
-                bw[i] = SetWeights(bw[i], hi, target, ni, wh + wn - target);
-            }
-            var copy = Instantiate(src);
-            copy.name = src.name + " (smooth chin)";
-            copy.boneWeights = bw;
-            smoothed[src] = copy;
-            smr.sharedMesh = copy;
-        }
-    }
-
-    static float Weight(BoneWeight b, int i) =>
-        (b.boneIndex0 == i ? b.weight0 : 0f) + (b.boneIndex1 == i ? b.weight1 : 0f) + (b.boneIndex2 == i ? b.weight2 : 0f) + (b.boneIndex3 == i ? b.weight3 : 0f);
-
-    static BoneWeight SetWeights(BoneWeight b, int hi, float wh, int ni, float wn)
-    {
-        if (b.boneIndex0 == hi) b.weight0 = wh; else if (b.boneIndex0 == ni) b.weight0 = wn;
-        if (b.boneIndex1 == hi) b.weight1 = wh; else if (b.boneIndex1 == ni) b.weight1 = wn;
-        if (b.boneIndex2 == hi) b.weight2 = wh; else if (b.boneIndex2 == ni) b.weight2 = wn;
-        if (b.boneIndex3 == hi) b.weight3 = wh; else if (b.boneIndex3 == ni) b.weight3 = wn;
-        return b;
     }
 
     /// <summary>Look at a point (null to look ahead again).</summary>

@@ -41,6 +41,12 @@ public class LabDriver : MonoBehaviour
         else if (task == "wakeface") yield return WakeFace();
         else if (task == "rooms") yield return Rooms();
         else if (task == "reverb") yield return Reverb();
+        else if (task == "steps") yield return StepEvents();
+        else if (task == "mix") yield return MixTest();
+        else if (task == "mixall") yield return MixAll();
+        else if (task == "enddoor") yield return EndDoor();
+        else if (task == "stride") yield return StrideJump();
+        else if (task == "cutsounds") yield return CutsceneSounds();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -89,6 +95,235 @@ public class LabDriver : MonoBehaviour
             i++;
             yield return null;
         }
+    }
+
+    /// <summary>Every sound at the volume the game plays it, heard in the bedroom and in the fuse room:
+    /// loudest 300 ms of the output (dB) and how far above that room's ambience.</summary>
+    IEnumerator MixAll()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var tap = FindAnyObjectByType<AudioListener>().gameObject.AddComponent<AudioTap>();
+        float Loudest(System.Collections.Generic.List<(float t, float e)> e, float window)
+        {
+            float best = 1e-12f;
+            for (int i = 0; i < e.Count; i++) { float sum = 0; int n = 0; for (int j = i; j < e.Count && e[j].t - e[i].t < window; j++) { sum += e[j].e; n++; } best = Mathf.Max(best, sum / Mathf.Max(1, n)); }
+            return 10f * Mathf.Log10(best);
+        }
+        // (name, volume the game uses)
+        var sounds = new (string n, float v)[]
+        {
+            ("wood_step_2", 1f), ("water_step_3", 1f), ("dialogue_blip", 0.5f), ("ui_click", 1f), ("keypad_beep", 0.7f),
+            ("door_open", 1f), ("door_close", 1f), ("door_creak", 1f), ("door_locked", 0.6f), ("cabinet_open", 1f), ("cabinet_close", 1f),
+            ("metal_open", 1f), ("metal_close", 1f), ("pickup", 1f), ("interact", 1f), ("fuse_insert", 1f), ("lever_pull", 1f),
+            ("unlock", 1f), ("error", 1f), ("phone_open", 1f), ("phone_close", 1f), ("quest_complete", 0.6f), ("puzzle_solved", 1f),
+            ("reveal", 1f), ("memory_whoosh", 1f), ("door_reveal", 0.85f), ("power_up", 1f), ("power_down", 1f), ("impact", 1f),
+            ("heartbeat", 0.8f), ("title_enter", 1f), ("shimmer", 0.7f),
+        };
+        string only = System.Environment.GetEnvironmentVariable("LAB_MIX_ONLY");
+        if (only == "diag2")
+        {
+            foreach (var (room, pos) in new[] { ("bedroom", new Vector3(0.2f, 0f, 4.1f)), ("fuse room", new Vector3(27f, 0f, 9f)), ("bedroom again", new Vector3(0.2f, 0f, 4.1f)) })
+            {
+                cc.enabled = false; mover.transform.position = new Vector3(pos.x, mover.transform.position.y, pos.z); cc.enabled = true;
+                yield return new WaitForSeconds(3f);
+                GameAudio.Hush(0.1f);
+                yield return new WaitForSeconds(0.5f);
+                tap.Begin(); GameAudio.PlaySfx("power_up"); yield return new WaitForSeconds(1.5f);
+                float l = Loudest(tap.End(), 0.3f);
+                var playing = FindObjectsByType<AudioSource>(FindObjectsSortMode.None).Where(a => a.isPlaying).Select(a => $"{a.name}:{(a.clip ? a.clip.name : "-")} v{a.volume:F2} sb{a.spatialBlend:F1} pri{a.priority}");
+                var listeners = FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Select(x => $"{x.name}@{x.transform.position} en{x.enabled}");
+                Debug.Log($"[Lab] mixall diag2 {room}: power_up {l:F1} dB | listener vol {AudioListener.volume:F2} | listeners {string.Join(";", listeners)} | lowpass {FindObjectsByType<AudioLowPassFilter>(FindObjectsSortMode.None).Length} | playing {string.Join(", ", playing)}");
+            }
+            yield break;
+        }
+        if (only == "diag")
+        {
+            cc.enabled = false; mover.transform.position = new Vector3(27f, mover.transform.position.y, 9f); cc.enabled = true;
+            yield return new WaitForSeconds(4f);
+            var setEcho = typeof(AudioMood).GetProperty("EchoAmount").GetSetMethod(true);
+            var mood = FindAnyObjectByType<AudioMood>();
+            foreach (var mode in new[] { "normal", "no echo voice", "no echo, no zones", "no ambience" })
+            {
+                if (mode == "no echo voice") { mood.enabled = false; setEcho.Invoke(null, new object[] { 0f }); }
+                if (mode == "no echo, no zones") foreach (var z in FindObjectsByType<AudioReverbZone>(FindObjectsSortMode.None)) z.enabled = false;
+                if (mode == "no ambience") GameAudio.Hush(0.1f);
+                yield return new WaitForSeconds(0.6f);
+                tap.Begin(); GameAudio.PlaySfx("power_up"); yield return new WaitForSeconds(1.5f);
+                float l = Loudest(tap.End(), 0.3f);
+                tap.Begin(); GameAudio.PlaySfx("quest_complete", 0.6f); yield return new WaitForSeconds(1.2f);
+                float q = Loudest(tap.End(), 0.3f);
+                Debug.Log($"[Lab] mixall diag {mode}: power_up {l:F1} dB, quest_complete {q:F1} dB");
+            }
+            yield break;
+        }
+        foreach (var (room, pos) in new[] { ("bedroom", new Vector3(0.2f, 0f, 4.1f)), ("fuse room", new Vector3(27f, 0f, 9f)) })
+        {
+            cc.enabled = false; mover.transform.position = new Vector3(pos.x, mover.transform.position.y, pos.z); cc.enabled = true;
+            yield return new WaitForSeconds(4f);
+            tap.Begin(); yield return new WaitForSeconds(1.5f);
+            float amb = Loudest(tap.End(), 0.3f);
+            Debug.Log($"[Lab] mixall {room}: ambience {amb:F1} dB ({GameAudio.CurrentAmbient}), echo {AudioMood.EchoAmount:F2}");
+            foreach (var (n, v) in sounds)
+            {
+                tap.Begin();
+                GameAudio.PlaySfx(n, v);
+                yield return new WaitForSeconds(1.0f);
+                float l = Loudest(tap.End(), 0.3f);
+                Debug.Log($"[Lab] mixall {room} | {n,-15} {l,6:F1} dB  {l - amb,5:+0.0;-0.0} over ambience");
+                yield return new WaitForSeconds(0.3f);
+            }
+        }
+    }
+
+    /// <summary>In the fuse room (power out, its ambience on): how loud each sound comes out over the room's
+    /// own sound (loudest 100 ms of the output while it plays vs the ambience alone).</summary>
+    IEnumerator MixTest()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var tap = FindAnyObjectByType<AudioListener>().gameObject.AddComponent<AudioTap>();
+        cc.enabled = false; mover.transform.position = new Vector3(27f, mover.transform.position.y, 9f); cc.enabled = true;
+        yield return new WaitForSeconds(4f); // the storage ambience fades in
+        float Loudest(System.Collections.Generic.List<(float t, float e)> e)
+        {
+            float best = 1e-12f;
+            for (int i = 0; i < e.Count; i++) { float sum = 0; int n = 0; for (int j = i; j < e.Count && e[j].t - e[i].t < 0.1f; j++) { sum += e[j].e; n++; } best = Mathf.Max(best, sum / Mathf.Max(1, n)); }
+            return 10f * Mathf.Log10(best);
+        }
+        tap.Begin(); yield return new WaitForSeconds(1.5f);
+        float amb = Loudest(tap.End());
+        Debug.Log($"[Lab] mix ambience alone {amb:F1} dB (ambient={GameAudio.CurrentAmbient}) echo={AudioMood.EchoAmount:F2}");
+        foreach (var name in new[] { "wood_step_2", "fuse_insert", "pickup", "lever_pull", "unlock", "door_open", "keypad_beep", "error", "power_up" })
+        {
+            tap.Begin();
+            GameAudio.PlaySfx(name);
+            yield return new WaitForSeconds(1.2f);
+            Debug.Log($"[Lab] mix {name}: {Loudest(tap.End()) - amb:+0.0;-0.0} dB over the ambience");
+            yield return new WaitForSeconds(0.5f);
+        }
+    }
+
+    /// <summary>Walks the player at game pace and logs the body's foot events and animator state.</summary>
+    IEnumerator StepEvents()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var body = mover.transform.Find("PlayerBody");
+        var anim = body != null ? body.GetComponentInChildren<Animator>() : null;
+        var ev = anim != null ? anim.GetComponent<EchoCharacters.EchoAnimationEvents>() : null;
+        int l = 0, r = 0, steps = 0;
+        if (ev != null) { ev.LeftFoot += () => l++; ev.RightFoot += () => r++; }
+        System.Action<Vector3, float> onStep = (p, k) => steps++;
+        Movement.Stepped += onStep;
+        Debug.Log($"[Lab] steps: body={body != null} animator={anim != null} events={ev != null} cull={anim?.cullingMode} fireEvents={anim?.fireEvents} controller={anim?.runtimeAnimatorController?.name}");
+        for (float t = 0f; t < 4f; t += Time.deltaTime)
+        {
+            cc.Move(mover.transform.forward * 2.5f * Time.deltaTime + Vector3.down * 0.5f * Time.deltaTime);
+            if (Mathf.Repeat(t, 1f) < Time.deltaTime)
+            {
+                var st = anim.GetCurrentAnimatorStateInfo(0);
+                var clips = anim.GetCurrentAnimatorClipInfo(0);
+                Debug.Log($"[Lab] steps t={t:F1} grounded={cc.isGrounded} state={st.shortNameHash} norm={st.normalizedTime:F2} clips={string.Join(",", clips.Select(c => c.clip.name + ":" + c.weight.ToString("F2")))} L={l} R={r} sounds={steps}");
+            }
+            yield return null;
+        }
+        Debug.Log($"[Lab] steps done: L={l} R={r} sounds={steps}");
+        Movement.Stepped -= onStep;
+    }
+
+    /// <summary>Every sound heard while a cutscene plays in this scene (the opening, or the confrontation and its ending).</summary>
+    IEnumerator CutsceneSounds()
+    {
+        var log = new System.Text.StringBuilder();
+        float t0 = Time.time;
+        GameAudio.Played += n => { if (CutscenePlayer.IsPlaying) log.Append($" {Time.time - t0:F1}:{n}"); };
+        int rings = 0;
+        ActorFootsteps.Stepped += (p, k) => rings++;
+        string scene = SceneManager.GetActiveScene().name;
+        for (float t = 0f; t < 120f && SceneManager.GetActiveScene().name == scene; t += Time.deltaTime)
+        {
+            var dm = FindAnyObjectByType<DialogueManager>();
+            if (dm != null && dm.IsTalking() && Mathf.Repeat(t, 1.5f) < Time.deltaTime) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver);
+            if (scene == "WhiteSpace" && t > 5f && !CutscenePlayer.IsPlaying) break;
+            // her walk in the cutscene: where she is and what she plays, five times a second
+            if (Mathf.Repeat(t, 0.2f) < Time.deltaTime)
+            {
+                var actor = FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).FirstOrDefault(v => v.transform.root.GetComponent<Movement>() == null && v.gameObject.activeInHierarchy);
+                var an = actor != null ? actor.GetComponentInChildren<Animator>() : null;
+                if (an != null) Debug.Log($"[Lab] actor t={Time.time - t0:F1} pos={actor.transform.position.x:F2},{actor.transform.position.z:F2} clips={string.Join(",", an.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.05f).Select(c => c.clip.name + ":" + c.weight.ToString("F1")))}");
+            }
+            yield return null;
+        }
+        Debug.Log($"[Lab] cutscene sounds in {scene} (actor steps {rings}):{log}");
+        Debug.Log("[Lab] cutsounds done");
+    }
+
+    /// <summary>
+    /// Walk, jump from the stride, land and walk on, then stop: every footstep sound with its time, the
+    /// clips playing around the jump, the lead foot and the time in the air (EchoCharacters v9).
+    /// </summary>
+    IEnumerator StrideJump()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        var dm = FindAnyObjectByType<DialogueManager>();
+        for (float t = 0f; t < 30f && dm != null && dm.IsTalking(); t += 0.3f) { dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return new WaitForSeconds(0.3f); }
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var body = mover.transform.Find("PlayerBody");
+        var anim = body != null ? body.GetComponentInChildren<Animator>() : null;
+        var view = body != null ? body.GetComponentInChildren<EchoCharacterView>() : null;
+        float t0 = Time.time;
+        var log = new System.Text.StringBuilder();
+        GameAudio.Played += n => { if (n.Contains("step")) log.Append($" {Time.time - t0:F2}:{n}"); };
+        Movement.Stepped += (p, k) => log.Append($"[{k:F2}]");
+        float walk = EchoLocomotion.PowerReference(Vector2.up) * PlayerAvatar.ModelScale;
+        // open floor (run it in the White Space)
+        if (SceneManager.GetActiveScene().name == "Level_1") { cc.enabled = false; mover.transform.position = new Vector3(10.5f, mover.transform.position.y, 15f); mover.transform.rotation = Quaternion.Euler(0f, 49f, 0f); cc.enabled = true; }
+        yield return new WaitForSeconds(0.5f);
+        Vector3 dir = mover.transform.forward;
+        string Clips() => string.Join(",", anim.GetCurrentAnimatorClipInfo(0).Select(c => c.clip.name + ":" + c.weight.ToString("F1")));
+        // walk 3 s
+        for (float t = 0f; t < 2.5f; t += Time.deltaTime) { cc.Move((dir * walk + Vector3.down * 2f) * Time.deltaTime); yield return null; }
+        Debug.Log($"[Lab] stride walking: grounded={cc.isGrounded} clips={Clips()} pos={mover.transform.position}");
+        Debug.Log($"[Lab] stride walk: speed {walk:F2} m/s, steps so far:{log}");
+        log.Clear();
+        // jump while walking (as if Space was pressed)
+        typeof(Movement).GetProperty("JumpWindup").GetSetMethod(true).Invoke(mover, new object[] { true });
+        typeof(Movement).GetField("windupLeft", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(mover, Movement.JumpWindupTime);
+        float jumpAt = Time.time, leftGround = -1f, landed = -1f, peak = mover.transform.position.y, y0 = mover.transform.position.y;
+        for (float t = 0f; t < 2f; t += Time.deltaTime)
+        {
+            cc.Move((dir * walk + (cc.isGrounded ? Vector3.down * 2f : Vector3.zero)) * Time.deltaTime);
+            if (!cc.isGrounded && leftGround < 0f && Time.time - jumpAt > 0.05f) leftGround = Time.time;
+            if (leftGround > 0f && cc.isGrounded && landed < 0f) landed = Time.time;
+            peak = Mathf.Max(peak, mover.transform.position.y);
+            if (Mathf.Repeat(t, 0.1f) < Time.deltaTime) Debug.Log($"[Lab] stride t={Time.time - jumpAt:F2} grounded={cc.isGrounded} lead={view.JumpLeadFoot} clips={Clips()}");
+            yield return null;
+        }
+        Debug.Log($"[Lab] stride jump: lead={view.JumpLeadFoot} airborne {(landed - leftGround):F2} s, peak {peak - y0:F2} m; sounds after pressing:{log}");
+        log.Clear();
+        // stop
+        for (float t = 0f; t < 1.5f; t += Time.deltaTime)
+        {
+            if (Mathf.Repeat(t, 0.25f) < Time.deltaTime) Debug.Log($"[Lab] stride stop t={t:F2} clips={Clips()}");
+            yield return null;
+        }
+        Debug.Log($"[Lab] stride stop sounds:{log}");
+        log.Clear();
+        // standing jump
+        yield return new WaitForSeconds(1f);
+        typeof(Movement).GetProperty("JumpWindup").GetSetMethod(true).Invoke(mover, new object[] { true });
+        typeof(Movement).GetField("windupLeft", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).SetValue(mover, Movement.JumpWindupTime);
+        yield return new WaitForSeconds(0.3f);
+        string leadStanding = view.JumpLeadFoot.ToString();
+        yield return new WaitForSeconds(1.7f);
+        Debug.Log($"[Lab] stride standing jump: lead={leadStanding} sounds:{log}");
+        Debug.Log("[Lab] stride done");
     }
 
     /// <summary>Records what the listener hears after a door sound at several spots: the echo left 0.3-1.2 s
@@ -241,6 +476,92 @@ public class LabDriver : MonoBehaviour
             yield return Take("30_confrontation", new Vector3(0f, 2.4f, 0.3f), new Vector3(0f, 1.9f, 6f));
             yield return Take("31_confrontation_wide", new Vector3(-6f, 3.5f, -5f), new Vector3(0f, 1.5f, 6f));
         }
+    }
+
+    /// <summary>The ending door after the levers: what is lit around it and how it looks shut, opening and open.</summary>
+    IEnumerator EndDoor()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        foreach (var f in FindObjectsByType<ItemPickup>(FindObjectsSortMode.None)) { f.Interact(); yield return new WaitForSeconds(0.2f); }
+        var key = FindAnyObjectByType<KeyPickup>(); if (key != null) key.Interact();
+        yield return null;
+        foreach (var k in FindObjectsByType<KeyDoorInteractable>(FindObjectsSortMode.None)) { if (k.canInteract) k.Interact(); yield return new WaitForSeconds(0.2f); }
+        foreach (var p in FindObjectsByType<PlaceItemInteractable>(FindObjectsSortMode.None)) { p.Interact(); yield return new WaitForSeconds(0.2f); }
+        for (float t = 0f; t < 25f && CutscenePlayer.IsPlaying; t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        foreach (var l in FindObjectsByType<Lever>(FindObjectsSortMode.None).OrderBy(l => l.symbolIndex)) { l.Interact(); yield return new WaitForSeconds(0.4f); }
+        yield return new WaitForSeconds(1f);
+        for (float t = 0f; t < 25f && CutscenePlayer.IsPlaying; t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        var ending = GameObject.Find("ToEnding");
+        Debug.Log($"[Lab] solved={FindAnyObjectByType<LeverPuzzle>()?.IsSolved} ending={(ending != null)}");
+        if (ending == null) yield break;
+        var door = ending.GetComponentInChildren<Door>(true);
+        Vector3 at = door.transform.position;
+        foreach (var r in ending.GetComponentsInChildren<Renderer>(true))
+            foreach (var m in r.sharedMaterials)
+                if (m != null) Debug.Log($"[Lab] renderer {r.name} active={r.gameObject.activeInHierarchy} mat={m.name} shader={m.shader.name} base={(m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor").ToString() : "-")} emis={(m.HasProperty("_EmissionColor") ? m.GetColor("_EmissionColor").ToString() : "-")}");
+        foreach (var li in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            if (Vector3.Distance(li.transform.position, at) < 8f) Debug.Log($"[Lab] light {li.name} parent={li.transform.parent?.name} type={li.type} col={li.color} int={li.intensity:F2} range={li.range:F1} on={li.enabled && li.gameObject.activeInHierarchy} dist={Vector3.Distance(li.transform.position, at):F1}");
+        Debug.Log($"[Lab] door at {at} forward {door.transform.forward} root fwd {ending.transform.forward}");
+        var mover = FindAnyObjectByType<Movement>();
+        if (mover != null) { var body = mover.transform.Find("PlayerBody"); if (body != null) body.gameObject.SetActive(false); }
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) { c.enabled = false; if (c.CompareTag("MainCamera")) c.tag = "Untagged"; }
+        var cam = MakeCam(60f);
+        cam.tag = "MainCamera";
+        cam.clearFlags = CameraClearFlags.Skybox;
+        cam.nearClipPlane = 0.05f;
+        UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = true;
+        string dir = System.IO.Path.Combine(OutDir, "enddoor");
+        System.IO.Directory.CreateDirectory(dir);
+        IEnumerator Take(string name, Vector3 pos, Vector3 look, float settle)
+        {
+            cam.transform.position = pos; cam.transform.LookAt(look);
+            for (float t = 0f; t < settle; t += Time.deltaTime) yield return null;
+            var rt = new RenderTexture(1280, 720, 24) { antiAliasing = 4 };
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = null;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0); tex.Apply();
+            RenderTexture.active = null;
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name + ".jpg"), tex.EncodeToJPG(90));
+            Destroy(tex); rt.Release(); Destroy(rt);
+            Debug.Log($"[Lab] shot {name}");
+        }
+        Vector3 eye = at + Vector3.up * 1.6f;
+        Vector3 f1 = door.transform.forward; f1.y = 0f; f1.Normalize();
+        Vector3 side = Vector3.Cross(Vector3.up, f1);
+        yield return Take("a_front", eye + f1 * 3.5f, eye, 2f);
+        yield return Take("b_back", eye - f1 * 3.5f, eye, 0.5f);
+        var through = FindObjectsByType<EnterThrough>(FindObjectsSortMode.None).FirstOrDefault();
+        Debug.Log($"[Lab] enterThrough={(through != null)} leaf={(through != null && through.leaf != null)}");
+        // what the player's aim hits from in front of the door, as PlayerInteract sees it
+        foreach (var h in Physics.RaycastAll(new Ray(eye + f1 * 2f, -f1), 4f, ~0, QueryTriggerInteraction.Ignore).OrderBy(h => h.distance))
+            Debug.Log($"[Lab] aim hit {h.collider.name} (root {h.collider.transform.root.name}) d={h.distance:F2} interactables=[{string.Join(",", h.collider.GetComponents<Interactable>().Select(i => i.GetType().Name + ":" + i.canInteract))}]");
+        if (System.Environment.GetEnvironmentVariable("LAB_ENTER") == "1")
+        {
+            var heard = new System.Collections.Generic.List<string>();
+            GameAudio.Played += n => heard.Add($"{Time.time:F2}:{n}");
+            var hitFront = Physics.RaycastAll(new Ray(eye + f1 * 2f, -f1), 4f, ~0, QueryTriggerInteraction.Ignore).OrderBy(h => h.distance).First();
+            foreach (var i in hitFront.collider.GetComponents<Interactable>()) if (i.canInteract) i.Interact();
+            Debug.Log($"[Lab] pressed E at {Time.time:F2}");
+            for (float t = 0f; t < 4f; t += Time.unscaledDeltaTime)
+            {
+                yield return null;
+                var playing = FindObjectsByType<AudioSource>(FindObjectsSortMode.None).Where(s => s.isPlaying && s.clip != null && s.clip.name.StartsWith("door")).Select(s => $"{s.clip.name} vol={s.volume:F2} t={s.time:F2}");
+                if ((int)(t * 10) % 3 == 0) Debug.Log($"[Lab] t={t:F1} scene={SceneManager.GetActiveScene().name} listener={AudioListener.volume:F2} door sources: {string.Join("; ", playing)}");
+            }
+            Debug.Log($"[Lab] heard: {string.Join(" ", heard)}");
+            Debug.Log("[Lab] shot h_back_near");
+            yield break;
+        }
+        if (through != null && through.leaf != null) through.leaf.OpenDoor();
+        yield return Take("c_front_opening", eye + f1 * 3.5f, eye, 0.35f);
+        yield return Take("d_front_open", eye + f1 * 3.5f, eye, 1.5f);
+        yield return Take("e_back_open", eye - f1 * 3.5f, eye, 0.3f);
+        yield return Take("f_front_near", eye + f1 * 1.6f, eye, 0.3f);
+        yield return Take("g_side", eye + f1 * 2.5f + side * 2.5f, eye, 0.3f);
+        yield return Take("h_back_near", eye - f1 * 1.6f, eye, 0.3f);
     }
 
     /// <summary>The real waking cutscene: frames from its own camera every 0.4 s, cropped around her head.</summary>
@@ -715,7 +1036,7 @@ public class LabDriver : MonoBehaviour
         float dur = 4f;
         for (float t = 0f; t < dur; t += Time.deltaTime)
         {
-            CharacterLibrary.Walk(hero, a, b, t / dur);
+            CharacterLibrary.Walk(hero, a, b, t / dur, dur);
             if (Mathf.Abs(t - 1.2f) < Time.deltaTime)
             {
                 View("walk_side", new Vector3(2.4f, 0.8f, 0f), new Vector3(0, 0.7f, 0), 30f);

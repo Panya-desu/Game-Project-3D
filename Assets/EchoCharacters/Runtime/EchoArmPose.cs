@@ -6,11 +6,11 @@ namespace EchoCharacters
     [DefaultExecutionOrder(10000),DisallowMultipleComponent]
     public sealed class EchoArmPose : MonoBehaviour
     {
-        Animator animator;readonly Transform[] lower=new Transform[2],hand=new Transform[2];
+        Animator animator;EchoAuthoredPose authored;readonly Transform[] lower=new Transform[2],hand=new Transform[2];
         readonly Quaternion[] restRotation=new Quaternion[2];readonly Vector3[] restAxis=new Vector3[2];float blend;
         void Awake()
         {
-            animator=GetComponentInChildren<Animator>();if(!animator||!animator.isHuman)return;
+            animator=GetComponentInChildren<Animator>();if(!animator||!animator.isHuman)return;authored=animator.GetComponent<EchoAuthoredPose>();
             SkinnedMeshRenderer body=null;foreach(var r in GetComponentsInChildren<SkinnedMeshRenderer>())if(r.name=="Body")body=r;
             if(!body||!body.sharedMesh)return;
             for(int side=0;side<2;side++)
@@ -26,6 +26,7 @@ namespace EchoCharacters
         void LateUpdate()
         {
             if(!animator||!animator.isActiveAndEnabled)return;
+            if(authored&&authored.AppliedFrame==Time.frameCount)return;
             blend=Mathf.MoveTowards(blend,1,Time.deltaTime/.12f);if(blend<=0)return;
             for(int side=0;side<2;side++)
             {

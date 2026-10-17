@@ -55,6 +55,9 @@ public class OpeningCutscene : MonoBehaviour
         Vector3 right = Vector3.Cross(Vector3.up, fwd);
         Vector3 head = feet + Vector3.up * 1.4f;
 
+        Vector3 walkEnd = feet + fwd * 3.2f;
+        Vector3 eyeEnd = walkEnd + (eye.transform.position - feet); // the player's eye, where she stops
+
         hero = CharacterLibrary.Spawn(false, feet, fwd);
         var heroRoot = hero != null ? hero.transform.root.gameObject : null;
         if (heroRoot != null) heroRoot.transform.position = feet;
@@ -64,7 +67,7 @@ public class OpeningCutscene : MonoBehaviour
             // the sky of drifting memories
             new CutscenePlayer.Shot(feet - fwd * 1.5f + Vector3.up * 1.2f, feet - fwd * 1.2f + Vector3.up * 1.6f,
                                     feet + fwd * 6f + Vector3.up * 10f, feet + fwd * 9f + Vector3.up * 6.5f, 5.5f,
-                                    onStart: () => CutscenePlayer.Caption("Somewhere between sleeping and waking...", 5f)),
+                                    onStart: () => { if (hero != null) hero.GazeUp(); CutscenePlayer.Caption("Somewhere between sleeping and waking...", 5f); }),
             // she stands alone on the water
             new CutscenePlayer.Shot(feet + fwd * 2.3f + right * 0.5f + Vector3.up * 0.35f, feet + fwd * 2.7f - right * 0.3f + Vector3.up * 0.95f,
                                     head - Vector3.up * 0.1f, head, 6f,
@@ -77,17 +80,31 @@ public class OpeningCutscene : MonoBehaviour
             new CutscenePlayer.Shot(feet - fwd * 1.6f + right * 0.6f + Vector3.up * 1.6f, feet - fwd * 7f + right * 2.5f + Vector3.up * 5f,
                                     feet + fwd * 4f + Vector3.up * 1.6f, gates + Vector3.up * 2.4f, 6f,
                                     onStart: () => CutscenePlayer.Caption("Three doors... and one of them is already open.", 5.5f),
-                                    onUpdate: k => CharacterLibrary.Walk(hero, feet, feet + fwd * 3.2f, k)),
-            // into her eyes
-            new CutscenePlayer.Shot(feet + fwd * 1.2f + Vector3.up * 1.75f, eye.transform.position,
-                                    head + fwd * 5f, eye.transform.position + fwd * 3f, 2.4f,
-                                    onUpdate: k => { if (heroRoot != null && k > 0.6f) heroRoot.SetActive(false); }),
+                                    // she sets off just after the cut and has stopped before the next shot
+                                    onUpdate: k => CharacterLibrary.Walk(hero, feet, walkEnd, Mathf.InverseLerp(0.08f, 0.8f, k), 6f * 0.72f)),
+            // behind her shoulder where she stopped, and into her eyes (as in the bedroom): the player is moved
+            // there first, so control returns right where she stands and she never visibly vanishes
+            new CutscenePlayer.Shot(walkEnd - fwd * 1.3f + right * 0.85f + Vector3.up * 1.7f, eyeEnd,
+                                    walkEnd + Vector3.up * 1.35f, eyeEnd + fwd * 3f, 2.6f,
+                                    onStart: () => MovePlayerTo(player, walkEnd, fwd),
+                                    onUpdate: k => { if (heroRoot != null && k > 0.8f) heroRoot.SetActive(false); }),
         };
         CutscenePlayer.Play(shots, () =>
         {
             if (heroRoot != null) Destroy(heroRoot);
             Release();
         }, startFrom: Color.white);
+    }
+
+    static void MovePlayerTo(Movement player, Vector3 feet, Vector3 facing)
+    {
+        if (player == null) return;
+        var cc = player.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+        Vector3 p = player.transform.position;
+        player.transform.position = new Vector3(feet.x, p.y, feet.z);
+        player.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+        if (cc != null) cc.enabled = true;
     }
 
     void Release()

@@ -15,6 +15,7 @@ public static class BuildGame
         PlayerSettings.resizableWindow = true;
         PlayerSettings.allowFullscreenSwitch = true;
         PlayerSettings.productName = "Echo of Memories";
+        PlayerSettings.enableFrameTimingStats = true; // CPU / GPU frame times for the -hitchlog diagnostics
         var scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
         var options = new BuildPlayerOptions
         {

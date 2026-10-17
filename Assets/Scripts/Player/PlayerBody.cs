@@ -19,11 +19,16 @@ public class PlayerBody : MonoBehaviour
     bool shown = true;
     float airborneTime;
     float bodyYaw, bodyYawVelocity;
+    float lastViewYaw, viewStill, facingYaw;
     // footstep timing from her feet: a foot coming down to the floor is a step
     Transform[] feet;
     readonly float[] footLow = new float[2], footHigh = new float[2], lastStep = new float[2];
     readonly bool[] planted = { true, true };
-    const float WalkCadenceCap = 1.35f;
+    bool previousWindup, previousAirborne;
+    float launchFloor;
+    Vector2 localVelocity;
+    EchoAnimationEvents stepEvents;
+    EchoLocomotion stepMotion;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Hook()
@@ -58,6 +63,7 @@ public class PlayerBody : MonoBehaviour
         if (view == null) return;
         var root = view.transform.root;
         CharacterKeyLight.Remove(root.gameObject); // never lit (shadow only), and its light would fall on cutscene actors
+        foreach (var s in root.GetComponentsInChildren<ActorFootsteps>(true)) Destroy(s); // her steps go through Movement
         float scale = root.localScale.y;
         root.SetParent(transform, true);
         root.localPosition = new Vector3(0f, bottom, 0f);
@@ -73,11 +79,17 @@ public class PlayerBody : MonoBehaviour
             r.renderingLayerMask = ShadowFocus.BodyLayer; // only the nearest lamp draws her shadow
         }
         lastPos = transform.position;
-        bodyYaw = transform.eulerAngles.y;
+        bodyYaw = lastViewYaw = facingYaw = transform.eulerAngles.y;
         var bodyAnimator = view.GetComponentInChildren<Animator>();
         if (bodyAnimator == null) bodyAnimator = view.GetComponentInParent<Animator>();
         if (bodyAnimator != null && bodyAnimator.isHuman)
             feet = new[] { bodyAnimator.GetBoneTransform(HumanBodyBones.LeftFoot), bodyAnimator.GetBoneTransform(HumanBodyBones.RightFoot) };
+        if (bodyAnimator != null)
+        {
+            stepEvents = bodyAnimator.GetComponent<EchoAnimationEvents>();
+            stepMotion = view.GetComponent<EchoLocomotion>();
+            if (stepEvents != null) { stepEvents.LeftFoot += OnFootContact; stepEvents.RightFoot += OnFootContact; }
+        }
         WarmUpShaders(root);
     }
 
@@ -90,11 +102,12 @@ public class PlayerBody : MonoBehaviour
     void FootSteps(bool walking)
     {
         if (movement == null) return;
+        if (stepEvents != null) { movement.StepsFromBody = true; return; }
         bool usable = feet != null && feet[0] != null && feet[1] != null;
         movement.StepsFromBody = usable;
         if (!usable) return;
-        float scale = Mathf.Abs(view.transform.root.lossyScale.y);
-        float rootY = view.transform.root.position.y, dt = Time.deltaTime;
+        float scale = Mathf.Abs(view.transform.lossyScale.y);
+        float rootY = view.transform.position.y, dt = Time.deltaTime;
         for (int i = 0; i < 2; i++)
         {
             float h = feet[i].position.y - rootY;
@@ -124,9 +137,48 @@ public class PlayerBody : MonoBehaviour
         Vector3 local = root.localPosition;
         root.position = cam.transform.position + cam.transform.forward * 2.5f - Vector3.up * 1.2f * root.lossyScale.y;
         foreach (var r in rends) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-        cam.Render(); // one extra frame, drawn behind the black fade
+        // one extra frame, drawn behind the black fade (into a texture: straight to the screen outside the
+        // frame loop the UI overlay pass failed when the editor's game view was another size)
+        var rt = RenderTexture.GetTemporary(Mathf.Max(64, Screen.width), Mathf.Max(64, Screen.height), 24);
+        var screenTarget = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();
+        cam.targetTexture = screenTarget;
+        RenderTexture.ReleaseTemporary(rt);
         foreach (var r in rends) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
         root.localPosition = local;
+    }
+
+    float lastFootTime = -1f, lastMovingTime = -10f, landedAt = -10f;
+
+    /// <summary>
+    /// A foot comes down in her animation (FootL/FootR in the clips): one footstep. EchoCharacters v9 sends
+    /// them from the clip that leads the blend only (v8 sent one from every clip, so they were filtered to
+    /// one per 0.2 s); a short guard is kept for a cross-fade between two states. Running steps land a
+    /// little heavier, the small steps of a turn on the spot softer, and the last step of a stop is heard
+    /// too. Silent in the air, in the jump wind-up, while hidden, and just after a landing (Movement plays
+    /// the landing itself, and her landing clip puts that same foot down).
+    /// </summary>
+    void OnFootContact()
+    {
+        if (movement == null || previousAirborne || movement.JumpWindup || !shown) return;
+        bool turning = stepMotion != null && stepMotion.Turning;
+        if (speedSmooth <= .3f && Time.time - lastMovingTime > 0.5f && !turning) return;
+        if (Time.time - landedAt < 0.15f || Time.time - lastFootTime < 0.12f) return;
+        lastFootTime = Time.time;
+        movement.Step(movement.Running ? 1.15f : speedSmooth <= .3f && turning ? 0.75f : 1f);
+    }
+    void OnDestroy()
+    {
+        if (stepEvents != null) { stepEvents.LeftFoot -= OnFootContact; stepEvents.RightFoot -= OnFootContact; }
+    }
+    void LateUpdate()
+    {
+        // her body hangs under the player, which the mouse turns: put her back to the yaw her own turning
+        // gave her (EchoLocomotion), so the view does not drag her round
+        if (view == null || !shown) return;
+        var motion = view.GetComponent<EchoLocomotion>();
+        if (motion != null) view.transform.rotation = Quaternion.Euler(0f, motion.WorldYaw, 0f);
     }
 
     void Update()
@@ -139,6 +191,7 @@ public class PlayerBody : MonoBehaviour
         if (show != shown)
         {
             shown = show;
+            HitchWatch.Note(show ? "body shown" : "body hidden");
             foreach (var r in view.transform.root.GetComponentsInChildren<Renderer>(true)) r.enabled = show;
         }
         if (!show) { lastPos = transform.position; speedSmooth = 0f; return; }
@@ -147,22 +200,38 @@ public class PlayerBody : MonoBehaviour
         lastPos = transform.position;
         float speed = Time.deltaTime > 0f ? new Vector2(delta.x, delta.z).magnitude / Time.deltaTime : 0f;
         speedSmooth = Mathf.Lerp(speedSmooth, speed, 1f - Mathf.Exp(-10f * Time.deltaTime));
-        float full = movement != null ? movement.speed : 6f;
         var motion = view.GetComponent<EchoLocomotion>();
         bool moving = speedSmooth > 0.3f;
+        if (moving) lastMovingTime = Time.time;
+        float modelScale = Mathf.Max(.001f, Mathf.Abs(view.transform.lossyScale.y));
+        Vector3 worldVelocity = Time.deltaTime > 0 ? delta / Time.deltaTime : Vector3.zero;
+        Vector3 local = Quaternion.Inverse(view.transform.rotation) * worldVelocity / modelScale;
+        // steadied: the speed measured frame to frame wobbles a little, and the walk blend (brisk / power)
+        // followed every wobble, which made the stride uneven, like a slight limp
+        localVelocity = Vector2.Lerp(localVelocity, new Vector2(local.x, local.z), 1f - Mathf.Exp(-10f * Time.deltaTime));
         if (motion != null)
         {
-            // a walk, never a run: the player moves faster than a real walk at her scale, so the walk cycle
-            // plays a little quicker (capped) instead of switching to the run
-            motion.maxPlaybackRate = WalkCadenceCap;
-            motion.ReleaseFacing();
-            motion.SetSpeed(moving ? 0.5f : 0f);
+            motion.SetRunning(movement != null && movement.Running && moving);
+            motion.SetLocalVelocity(localVelocity);
         }
-        else view.SetLocomotion(moving ? 0.5f : 0f);
-        // she turns to face where the player looks, smoothly (her shadow follows the view)
-        float targetYaw = transform.eulerAngles.y;
-        bodyYaw = Mathf.SmoothDampAngle(bodyYaw, targetYaw, ref bodyYawVelocity, 0.12f);
-        view.transform.rotation = Quaternion.Euler(0f, bodyYaw, 0f);
+        else view.SetLocomotion(moving ? .5f : 0f);
+        // she turns to face where the player looks. Walking, she follows the view at once; standing, her
+        // steps turn her (EchoLocomotion's turn on the spot), and only once the view has settled, so one turn
+        // of the right size (45/90/180) covers the whole change instead of a 45 that snaps the rest
+        float viewYaw = transform.eulerAngles.y;
+        float viewSpeed = Time.deltaTime > 0f ? Mathf.Abs(Mathf.DeltaAngle(lastViewYaw, viewYaw)) / Time.deltaTime : 0f;
+        lastViewYaw = viewYaw;
+        viewStill = viewSpeed < 25f ? viewStill + Time.deltaTime : 0f;
+        if (motion != null)
+        {
+            if (moving || viewStill > 0.18f) facingYaw = viewYaw;
+            motion.SetFacing(Quaternion.Euler(0f, facingYaw, 0f) * Vector3.forward);
+        }
+        else
+        {
+            bodyYaw = Mathf.SmoothDampAngle(bodyYaw, viewYaw, ref bodyYawVelocity, 0.12f);
+            view.transform.rotation = Quaternion.Euler(0f, bodyYaw, 0f);
+        }
         if (controller != null)
         {
             // jump: the wind-up plays the take-off (crouch and push) while still on the ground, then the
@@ -171,8 +240,23 @@ public class PlayerBody : MonoBehaviour
             airborneTime = grounded ? 0f : airborneTime + Time.deltaTime;
             bool windup = movement != null && movement.JumpWindup;
             bool rising = !grounded && controller.velocity.y > 0.5f;
-            bool inAir = windup || rising || airborneTime > 0.08f;
-            view.SetAirborne(inAir, windup || rising ? 1f : controller.velocity.y);
+            if (windup && !previousWindup)
+            {
+                launchFloor = view.transform.position.y;
+                view.BeginJump(localVelocity);
+                // from a stride she springs off one foot and lands on the leading one (one footfall each);
+                // standing, both feet push off and come down together
+                if (movement != null) movement.StrideJump = view.JumpLeadFoot != EchoFoot.None;
+            }
+            bool inAir = !windup && (rising || airborneTime > .08f);
+            if (grounded && !previousAirborne && !windup) launchFloor = view.transform.position.y;
+            if (inAir) view.SetAirborne(true, controller.velocity.y);
+            else if (previousAirborne && grounded)
+            {
+                view.Landed(Mathf.Max(0, launchFloor - view.transform.position.y), localVelocity);
+                landedAt = Time.time;
+            }
+            previousWindup = windup; previousAirborne = inAir;
             FootSteps(moving && grounded && !inAir);
         }
     }

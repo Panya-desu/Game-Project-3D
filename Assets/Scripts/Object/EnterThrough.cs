@@ -40,12 +40,15 @@ public class EnterThrough : Interactable
 
     IEnumerator Open()
     {
-        // one door sound: the leaf's, the Door behind it goes through silently
+        // one door sound: the leaf's (the same as every wooden door), the Door behind it goes through silently.
+        // The leaf swings all the way and its sound plays out before the fade, then the light draws her in.
         GameAudio.PlaySfx("door_open");
         if (leaf != null)
         {
             leaf.OpenDoor();
-            yield return new WaitForSeconds(0.6f);
+            yield return new WaitForSeconds(0.55f);
+            GameAudio.PlaySfx("memory_whoosh", 0.4f);
+            yield return new WaitForSeconds(0.45f);
         }
         target.Enter(false);
     }

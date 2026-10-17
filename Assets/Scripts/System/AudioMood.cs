@@ -21,6 +21,7 @@ public class AudioMood : MonoBehaviour
     public static Space EchoSpace { get; private set; }
     LeverPuzzle puzzle;
     AudioSource spark;
+    float sparkGain = 1f;
     float nextSpark;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -95,7 +96,7 @@ public class AudioMood : MonoBehaviour
         spark.rolloffMode = AudioRolloffMode.Linear;
         spark.minDistance = 1.5f;
         spark.maxDistance = 14f;
-        spark.clip = Resources.Load<AudioClip>("Audio/spark");
+        spark.clip = GameAudio.Mixed("spark", out sparkGain);
         nextSpark = Time.time + 4f;
     }
 
@@ -120,11 +121,21 @@ public class AudioMood : MonoBehaviour
 
     void Update()
     {
-        if (spark == null || spark.clip == null || Time.time < nextSpark) return;
+        if (spark == null || spark.clip == null) return;
+        // the fuse box is on the wall the storage room shares with the house: a 3D sound alone came
+        // straight through it into the dining and living rooms, so it is only heard in the wing (and a
+        // little through the open door)
+        var cam = Camera.main;
+        float heard = cam != null ? StorageZone.HeardFromWing(cam.transform.position) : 1f;
+        if (spark.isPlaying) spark.volume = sparkVolume * heard;
+        if (Time.time < nextSpark) return;
         nextSpark = Time.time + Random.Range(6f, 13f);
-        if (puzzle.IsPowered || PauseMenu.IsPaused) return;
+        if (puzzle.IsPowered || PauseMenu.IsPaused || heard <= 0.01f) return;
         spark.pitch = Random.Range(0.9f, 1.15f);
-        spark.volume = Random.Range(0.25f, 0.45f);
+        sparkVolume = Random.Range(0.6f, 1f) * sparkGain;
+        spark.volume = sparkVolume * heard;
         spark.Play();
     }
+
+    float sparkVolume;
 }
