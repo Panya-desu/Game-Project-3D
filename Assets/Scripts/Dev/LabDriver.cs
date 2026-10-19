@@ -47,6 +47,19 @@ public class LabDriver : MonoBehaviour
         else if (task == "enddoor") yield return EndDoor();
         else if (task == "stride") yield return StrideJump();
         else if (task == "cutsounds") yield return CutsceneSounds();
+        else if (task == "stops") yield return Stops();
+        else if (task == "stopfilm") yield return StopFilm();
+        else if (task == "walkcheck") yield return WalkCheck();
+        else if (task == "eyeshot") yield return EyeShot();
+        else if (task == "cost") yield return FrameCost();
+        else if (task == "hairmotion") yield return HairMotion();
+        else if (task == "storycams") yield return StoryCams();
+        else if (task == "windows") yield return Windows();
+        else if (task == "sunglow") yield return SunGlow();
+        else if (task == "walkend") yield return WalkEnd();
+        else if (task == "armidle") yield return ArmIdle();
+        else if (task == "hairweights") yield return HairWeights();
+        else if (task == "hairlook") yield return HairLook();
         UnityEditor.EditorApplication.Exit(0);
     }
 
@@ -235,9 +248,194 @@ public class LabDriver : MonoBehaviour
         Movement.Stepped -= onStep;
     }
 
+    /// <summary>
+    /// Walks (and runs) her in every direction with the real controls and lets go: how many steps she takes
+    /// after the keys are released, what her animation plays, and how far each foot still travels.
+    /// </summary>
+    IEnumerator Stops()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var dm = FindAnyObjectByType<DialogueManager>();
+        for (float t = 0f; t < 30f && dm != null && dm.IsTalking(); t += 0.3f) { dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return new WaitForSeconds(0.3f); }
+        yield return new WaitForSeconds(1f);
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var body = mover.transform.Find("PlayerBody");
+        var anim = body.GetComponentInChildren<Animator>();
+        var ev = anim.GetComponent<EchoAnimationEvents>();
+        var loco = body.GetComponentInChildren<EchoLocomotion>();
+        Transform lf = anim.GetBoneTransform(HumanBodyBones.LeftFoot), rf = anim.GetBoneTransform(HumanBodyBones.RightFoot);
+        Vector3 home = mover.transform.position;
+        int steps = 0; bool counting = false;
+        System.Action onFoot = () => { if (counting) steps++; };
+        ev.LeftFoot += onFoot; ev.RightFoot += onFoot;
+        var cases = new (string n, Vector2 d, bool run)[] { ("forward", new Vector2(0, 1), false), ("fwd-right", new Vector2(0.7f, 0.7f), false), ("right", new Vector2(1, 0), false), ("back-right", new Vector2(0.7f, -0.7f), false), ("back", new Vector2(0, -1), false), ("back-left", new Vector2(-0.7f, -0.7f), false), ("left", new Vector2(-1, 0), false), ("fwd-left", new Vector2(-0.7f, 0.7f), false), ("run", new Vector2(0, 1), true) };
+        foreach (var c in cases)
+        {
+            cc.enabled = false; mover.transform.position = home; mover.transform.rotation = Quaternion.identity; cc.enabled = true;
+            Movement.LabInput = Vector2.zero; Movement.LabRun = false;
+            yield return new WaitForSeconds(1.2f);
+            Movement.LabInput = c.d; Movement.LabRun = c.run;
+            for (float w = 0f; w < 2.4f; w += Time.deltaTime) { if (dm != null && dm.IsTalking()) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return null; }
+            if (cc.velocity.magnitude < 0.3f) { Debug.Log($"[Lab] stop {c.n}: she did not walk (blocked)"); continue; }
+            // let go
+            Movement.LabInput = Vector2.zero; Movement.LabRun = false;
+            steps = 0; counting = true;
+            float t0 = Time.time, stoppedAt = -1f; Vector3 l0 = lf.position, r0 = rf.position, p0 = mover.transform.position;
+            var states = new System.Collections.Generic.List<string>();
+            float lTravel = 0, rTravel = 0; Vector3 lp = lf.position, rp = rf.position;
+            while (Time.time - t0 < 1.4f)
+            {
+                yield return null;
+                lTravel += Vector3.ProjectOnPlane(lf.position - lp, Vector3.up).magnitude; rTravel += Vector3.ProjectOnPlane(rf.position - rp, Vector3.up).magnitude;
+                lp = lf.position; rp = rf.position;
+                string s = string.Join("+", anim.GetCurrentAnimatorClipInfo(0).Where(x => x.weight > 0.3f).Select(x => x.clip.name));
+                if (states.Count == 0 || states[states.Count - 1].Split('@')[0] != s) states.Add($"{s}@{Time.time - t0:F2}");
+                if (stoppedAt < 0 && cc.velocity.magnitude < 0.05f) stoppedAt = Time.time - t0;
+            }
+            counting = false;
+            float bodyTravel = Vector3.ProjectOnPlane(mover.transform.position - p0, Vector3.up).magnitude;
+            Debug.Log($"[Lab] stop {c.n}: steps after release={steps} body stopped at {stoppedAt:F2}s after {bodyTravel:F2} m, feet moved L {lTravel:F2} R {rTravel:F2} m (scale {PlayerAvatar.ModelScale:F2}) phase at release? anim: {string.Join(" > ", states)}");
+        }
+        Movement.LabInput = null; Movement.LabRun = false;
+        Debug.Log("[Lab] stops done");
+    }
+
+    /// <summary>
+    /// Walking the way a player does: keys changed now and then (forward, forward-right, right...), the
+    /// view turned with the mouse. Lists every animation state she passes through and the gaps between
+    /// her footsteps: a start, stop, idle or turn in the middle of walking is a stutter.
+    /// </summary>
+    IEnumerator WalkCheck()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var dm = FindAnyObjectByType<DialogueManager>();
+        var mover = FindAnyObjectByType<Movement>();
+        var body = mover.transform.Find("PlayerBody");
+        var anim = body.GetComponentInChildren<Animator>();
+        var ev = anim.GetComponent<EchoAnimationEvents>();
+        var states = new System.Collections.Generic.List<string>(); var feet = new System.Collections.Generic.List<float>();
+        float t0 = Time.time; System.Action foot = () => feet.Add(Time.time - t0);
+        ev.LeftFoot += foot; ev.RightFoot += foot;
+        // keys as a player presses them: W, then W+D (axis passes through zero when one key is let go)
+        var keys = new (float at, Vector2 v)[] { (0f, new Vector2(0, 1)), (1.5f, new Vector2(0.7f, 0.7f)), (2.5f, new Vector2(0, 1)), (2.52f, Vector2.zero), (2.56f, new Vector2(0, 1)), (4f, new Vector2(1, 0)), (5f, new Vector2(0, 1)), (7f, new Vector2(0, 1)) };
+        int ki = 0; float yaw0 = mover.transform.eulerAngles.y;
+        for (float t = 0f; t < 7f; t += Time.deltaTime)
+        {
+            if (dm != null && dm.IsTalking()) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver);
+            while (ki + 1 < keys.Length && t >= keys[ki + 1].at) ki++;
+            Movement.LabInput = keys[ki].v;
+            // the mouse: the view sways left and right while she walks
+            mover.transform.rotation = Quaternion.Euler(0f, yaw0 + 35f * Mathf.Sin(t * 1.3f), 0f);
+            string s = string.Join("+", anim.GetCurrentAnimatorClipInfo(0).Where(x => x.weight > 0.3f).Select(x => x.clip.name));
+            if (states.Count == 0 || states[states.Count - 1].Split('@')[0] != s) states.Add($"{s}@{t:F2}");
+            yield return null;
+        }
+        Movement.LabInput = null;
+        var gaps = feet.Zip(feet.Skip(1), (a, b) => b - a).ToList();
+        Debug.Log($"[Lab] walkcheck states: {string.Join(" > ", states)}");
+        Debug.Log($"[Lab] walkcheck footstep gaps: {string.Join(" ", gaps.Select(g => g.ToString("F2")))} (max {(gaps.Count > 0 ? gaps.Max() : 0):F2})");
+        Debug.Log("[Lab] walkcheck done");
+    }
+
+    /// <summary>The last shot of a cutscene that ends in her eyes and the first second of play after it, from
+    /// whichever camera is showing, a frame every 0.1 s on one sheet.</summary>
+    IEnumerator EyeShot()
+    {
+        HitchWatch.Enable();
+        string scene = SceneManager.GetActiveScene().name;
+        string last = scene == "WhiteSpace" ? "cutscene shot 3" : "cutscene shot 2";
+        for (float t = 0f; t < 60f && HitchWatch.LastEvent != last; t += Time.deltaTime) yield return null;
+        yield return null;
+        // where the actor stands and looks, against where the player will stand and look
+        var mover = FindAnyObjectByType<Movement>();
+        foreach (var v in FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None))
+        {
+            if (mover != null && v.transform.IsChildOf(mover.transform)) continue;
+            var a = v.GetComponentInChildren<Animator>();
+            var head = a != null && a.isHuman ? a.GetBoneTransform(HumanBodyBones.Head) : null;
+            var root = v.transform.root;
+            var eyeCam = mover != null ? mover.GetComponentInChildren<Camera>(true) : null;
+            if (head != null && eyeCam != null)
+                Debug.Log($"[Lab] eyeshot actor: feet {root.position.ToString("F2")} facing {Vector3.ProjectOnPlane(root.forward, Vector3.up).normalized.ToString("F2")} head {head.position.ToString("F2")}; player feet {mover.transform.position.ToString("F2")} facing {mover.transform.forward.ToString("F2")} eye {eyeCam.transform.position.ToString("F2")} -> feet {Vector3.Distance(Vector3.ProjectOnPlane(root.position, Vector3.up), Vector3.ProjectOnPlane(mover.transform.position, Vector3.up)) * 100f:F0} cm apart, facing {Vector3.Angle(Vector3.ProjectOnPlane(root.forward, Vector3.up), Vector3.ProjectOnPlane(mover.transform.forward, Vector3.up)):F0} deg apart, head-to-eye {(head.position - eyeCam.transform.position).ToString("F2")}");
+        }
+        const int W = 480, H = 270; var frames = new System.Collections.Generic.List<Texture2D>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        Vector3 lastPos = Vector3.zero; Quaternion lastRot = Quaternion.identity; float lastFov = 0f;
+        float after = 0f;
+        System.Func<Camera> showing = () => FindObjectsByType<Camera>(FindObjectsSortMode.None).FirstOrDefault(c => c.enabled && c.gameObject.name == "CutsceneCamera") ?? Camera.main;
+        for (int i = 0; i < 48 && after < 1f; i++)
+        {
+            var cam = showing();
+            if (cam != null)
+            {
+                cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+                var t = new Texture2D(W, H, TextureFormat.RGB24, false); t.ReadPixels(new Rect(0, 0, W, H), 0, 0); t.Apply(); RenderTexture.active = null; frames.Add(t);
+            }
+            for (float w = 0f; w < 0.1f; w += Time.deltaTime)
+            {
+                if (CutscenePlayer.IsPlaying) { var cc0 = showing(); if (cc0 != null && cc0.gameObject.name == "CutsceneCamera") { lastPos = cc0.transform.position; lastRot = cc0.transform.rotation; lastFov = cc0.fieldOfView; } }
+                else after += Time.deltaTime;
+                yield return null;
+            }
+        }
+        var pc = Camera.main;
+        if (pc != null) Debug.Log($"[Lab] eyeshot handover: cutscene ended at {lastPos.ToString("F3")} looking {(lastRot * Vector3.forward).ToString("F3")} fov {lastFov:F1}; player eye at {pc.transform.position.ToString("F3")} looking {pc.transform.forward.ToString("F3")} fov {pc.fieldOfView:F1} -> {Vector3.Distance(lastPos, pc.transform.position) * 100f:F1} cm, {Quaternion.Angle(lastRot, pc.transform.rotation):F1} deg apart; black {ScreenFader.Opaque}");
+        int cols = 6, rows = (frames.Count + cols - 1) / cols;
+        var sheet = new Texture2D(W * cols, H * Mathf.Max(1, rows), TextureFormat.RGB24, false);
+        for (int i = 0; i < frames.Count; i++) sheet.SetPixels((i % cols) * W, (rows - 1 - i / cols) * H, W, H, frames[i].GetPixels());
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, $"eyeshot_{scene}.jpg"), sheet.EncodeToJPG(88));
+        Debug.Log($"[Lab] eyeshot {scene}: {frames.Count} frames");
+        Debug.Log("[Lab] eyeshot done");
+    }
+
+    /// <summary>Her stop from the side, frame by frame (0.08 s apart from letting go), three tries one row each.</summary>
+    IEnumerator StopFilm()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var dm = FindAnyObjectByType<DialogueManager>();
+        for (float t = 0f; t < 30f && dm != null && dm.IsTalking(); t += 0.3f) { dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return new WaitForSeconds(0.3f); }
+        yield return new WaitForSeconds(1f);
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var body = mover.transform.Find("PlayerBody");
+        foreach (var r in body.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(30f); cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.42f, 0.44f, 0.5f);
+        Vector3 home = mover.transform.position; float s = PlayerAvatar.ModelScale;
+        const int W = 260, H = 420; var rows = new System.Collections.Generic.List<System.Collections.Generic.List<Texture2D>>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        for (int style = 0; style < 3; style++)
+        {
+            // (one row per try; the stop itself is PlayerBody's)
+            cc.enabled = false; mover.transform.position = home; mover.transform.rotation = Quaternion.identity; cc.enabled = true;
+            Movement.LabInput = Vector2.zero; yield return new WaitForSeconds(1f);
+            Movement.LabInput = new Vector2(0, 1);
+            for (float w = 0f; w < 2.2f; w += Time.deltaTime) { if (dm != null && dm.IsTalking()) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return null; }
+            Debug.Log($"[Lab] stopfilm style {style}: speed at release {cc.velocity.magnitude:F2} m/s");
+            Movement.LabInput = Vector2.zero;
+            var row = new System.Collections.Generic.List<Texture2D>();
+            for (int i = 0; i < 11; i++)
+            {
+                Vector3 c0 = body.position + Vector3.up * 0.55f * s;
+                cam.transform.position = c0 + Vector3.right * 2.6f * s; cam.transform.LookAt(c0);
+                cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+                var t = new Texture2D(W, H, TextureFormat.RGB24, false); t.ReadPixels(new Rect(0, 0, W, H), 0, 0); t.Apply(); RenderTexture.active = null; row.Add(t);
+                yield return new WaitForSeconds(0.08f);
+            }
+            rows.Add(row);
+        }
+        Movement.LabInput = null;
+        var sheet = new Texture2D(W * 11, H * 3, TextureFormat.RGB24, false);
+        for (int r = 0; r < 3; r++) for (int i = 0; i < 11; i++) sheet.SetPixels(i * W, (2 - r) * H, W, H, rows[r][i].GetPixels());
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, "stopfilm.jpg"), sheet.EncodeToJPG(88));
+        Debug.Log("[Lab] stopfilm done");
+    }
+
     /// <summary>Every sound heard while a cutscene plays in this scene (the opening, or the confrontation and its ending).</summary>
     IEnumerator CutsceneSounds()
     {
+        HitchWatch.Enable();
         var log = new System.Text.StringBuilder();
         float t0 = Time.time;
         GameAudio.Played += n => { if (CutscenePlayer.IsPlaying) log.Append($" {Time.time - t0:F1}:{n}"); };
@@ -252,9 +450,11 @@ public class LabDriver : MonoBehaviour
             // her walk in the cutscene: where she is and what she plays, five times a second
             if (Mathf.Repeat(t, 0.2f) < Time.deltaTime)
             {
-                var actor = FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).FirstOrDefault(v => v.transform.root.GetComponent<Movement>() == null && v.gameObject.activeInHierarchy);
-                var an = actor != null ? actor.GetComponentInChildren<Animator>() : null;
-                if (an != null) Debug.Log($"[Lab] actor t={Time.time - t0:F1} pos={actor.transform.position.x:F2},{actor.transform.position.z:F2} clips={string.Join(",", an.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.05f).Select(c => c.clip.name + ":" + c.weight.ToString("F1")))}");
+                foreach (var actor in FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).Where(v => v.transform.root.GetComponent<Movement>() == null && v.gameObject.activeInHierarchy))
+                {
+                    var an = actor.GetComponentInChildren<Animator>();
+                    if (an != null) Debug.Log($"[Lab] actor {actor.transform.root.name} t={Time.time - t0:F1} shot={HitchWatch.LastEvent} pos={actor.transform.position.x:F2},{actor.transform.position.z:F2} clips={string.Join(",", an.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.05f).Select(c => c.clip.name + ":" + c.weight.ToString("F1")))}");
+                }
             }
             yield return null;
         }
@@ -866,6 +1066,558 @@ public class LabDriver : MonoBehaviour
     }
 
     /// <summary>Frame cost of the current scene (CPU + GPU, rendered at 1920x1080), with things switched off one by one.</summary>
+    /// <summary>
+    /// Her hair in motion: a character turns quickly, walks and stops, filmed from behind at her shoulder,
+    /// a frame every 0.1 s on one sheet. LAB_HAIR="angle,frequency,damping,inertia" tries other settings.
+    /// </summary>
+    IEnumerator HairMotion()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        Vector3 spot = CharacterLibrary.GroundBelow(mover.transform.position + mover.transform.forward * 3f);
+        var hero = CharacterLibrary.Spawn(false, spot, Vector3.forward);
+        var root = hero.transform.root; root.position = spot;
+        var sm = root.GetComponentInChildren<EchoSecondaryMotion>();
+        string cfg = System.Environment.GetEnvironmentVariable("LAB_HAIR");
+        if (!string.IsNullOrEmpty(cfg))
+        {
+            var f = cfg.Split(',').Select(float.Parse).ToArray();
+            sm.enabled = false; sm.hairMaxAngle = f[0]; sm.hairFrequency = f[1]; sm.hairDamping = f[2]; sm.hairInertia = f[3]; sm.enabled = true;
+        }
+        Debug.Log($"[Lab] hair settings angle={sm.hairMaxAngle} freq={sm.hairFrequency} damp={sm.hairDamping} inertia={sm.hairInertia}");
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(32f); cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.42f, 0.44f, 0.5f);
+        UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = false;
+        float s = PlayerAvatar.ModelScale;
+        var motion = hero.GetComponent<EchoLocomotion>();
+        yield return new WaitForSeconds(1.5f);
+        const int W = 360, H = 400; var frames = new System.Collections.Generic.List<Texture2D>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        void Grab()
+        {
+            Vector3 head = root.position + Vector3.up * 1.38f * s;
+            cam.transform.position = head + new Vector3(0.0f, 0.1f, -0.85f) * s; cam.transform.LookAt(head);
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+            var t = new Texture2D(W, H, TextureFormat.RGB24, false); t.ReadPixels(new Rect(0, 0, W, H), 0, 0); t.Apply(); RenderTexture.active = null; frames.Add(t);
+        }
+        float next = 0f, clock = 0f;
+        // a quick turn of 110 degrees and back (as when the player whips round), filmed close behind her head
+        motion.enabled = false;
+        Quaternion q0 = root.rotation, q1 = q0 * Quaternion.Euler(0f, 110f, 0f);
+        var tips = root.GetComponentsInChildren<Transform>().Where(x => x.name.StartsWith("HairFlow") && x.name.EndsWith("_03")).ToArray();
+        var headBone = root.GetComponentInChildren<Animator>().GetBoneTransform(HumanBodyBones.Head);
+        var rest = tips.Select(x => headBone.InverseTransformPoint(x.position)).ToArray();
+        float maxSwing = 0f, sumSwing = 0f; int nSwing = 0;
+        while (clock < 2.4f)
+        {
+            float k = clock < 0.3f ? clock / 0.3f : clock < 1.2f ? 1f : clock < 1.5f ? 1f - (clock - 1.2f) / 0.3f : 0f;
+            root.rotation = Quaternion.Slerp(q0, q1, Mathf.SmoothStep(0f, 1f, k));
+            if (clock >= next) { Grab(); next += 0.1f; }
+            for (int i = 0; i < tips.Length; i++) { float d = (headBone.InverseTransformPoint(tips[i].position) - rest[i]).magnitude * headBone.lossyScale.y * 100f; maxSwing = Mathf.Max(maxSwing, d); sumSwing += d; nSwing++; }
+            clock += Time.deltaTime; yield return null;
+        }
+        Debug.Log($"[Lab] hair tips swing: max {maxSwing:F1} cm, mean {sumSwing / Mathf.Max(1, nSwing):F2} cm (from the head)");
+        Debug.Log($"[Lab] hair max bend {sm.HairMaxObservedBend:F1} deg, clamps {sm.HairCollisionClampCount}, sim {sm.HairSimulationMilliseconds:F2} ms");
+        int cols = 8, rows = (frames.Count + cols - 1) / cols;
+        var sheet = new Texture2D(W * cols, H * rows, TextureFormat.RGB24, false);
+        for (int i = 0; i < frames.Count; i++) sheet.SetPixels((i % cols) * W, (rows - 1 - i / cols) * H, W, H, frames[i].GetPixels());
+        sheet.Apply();
+        string tag = string.IsNullOrEmpty(cfg) ? "current" : cfg.Replace(",", "_");
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, $"hairmotion_{tag}.jpg"), sheet.EncodeToJPG(88));
+        Debug.Log("[Lab] hairmotion done");
+    }
+
+    /// <summary>CPU time per frame with the characters' spring motion (hair, skirt) on and off, and with them hidden.</summary>
+    IEnumerator FrameCost()
+    {
+        QualitySettings.vSyncCount = 0; Application.targetFrameRate = -1;
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(2f);
+        var timing = new FrameTiming[1];
+        var chars = FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).Select(v => v.transform.root.gameObject).Distinct().ToList();
+        var springs = FindObjectsByType<EchoSecondaryMotion>(FindObjectsSortMode.None);
+        IEnumerator Measure(string label)
+        {
+            for (int i = 0; i < 30; i++) yield return null;
+            var cpu = new System.Collections.Generic.List<double>();
+            var sw = new System.Diagnostics.Stopwatch();
+            double springMs = 0;
+            for (int i = 0; i < 300; i++)
+            {
+                yield return null;
+                FrameTimingManager.CaptureFrameTimings();
+                if (FrameTimingManager.GetLatestTimings(1, timing) > 0) cpu.Add(timing[0].cpuMainThreadFrameTime);
+            }
+            cpu.Sort();
+            Debug.Log($"[Lab] cost {SceneManager.GetActiveScene().name} {label}: cpu main avg {cpu.Average():F2} ms, p95 {cpu[(int)(cpu.Count * 0.95f)]:F2} ms ({chars.Count} characters, {springs.Length} spring rigs)");
+        }
+        yield return Measure("all on");
+        foreach (var sp in springs) sp.enabled = false;
+        yield return Measure("spring motion off");
+        foreach (var sp in springs) sp.enabled = true;
+        foreach (var c in chars) c.SetActive(false);
+        yield return Measure("characters hidden");
+        foreach (var c in chars) c.SetActive(true);
+        Debug.Log("[Lab] cost done");
+    }
+
+    static string PathOf(Transform t) { string s = t.name; for (int i = 0; i < 3 && t.parent != null; i++) { t = t.parent; s = t.name + "/" + s; } return s; }
+
+    /// <summary>Films the next cutscene from its own camera (a frame every 0.25 s on one sheet) and logs every
+    /// object the camera passes through.</summary>
+    IEnumerator FilmCutscene(string name)
+    {
+        for (float t = 0f; t < 30f && !CutscenePlayer.IsPlaying; t += Time.deltaTime) yield return null;
+        const int W = 480, H = 270; var frames = new System.Collections.Generic.List<Texture2D>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        var rends = FindObjectsByType<Renderer>(FindObjectsSortMode.None).Where(r => !(r is ParticleSystemRenderer)).ToArray();
+        var inside = new System.Collections.Generic.HashSet<string>();
+        float t0 = Time.time;
+        while (CutscenePlayer.IsPlaying)
+        {
+            var cam = FindObjectsByType<Camera>(FindObjectsSortMode.None).FirstOrDefault(c => c.enabled && c.gameObject.name == "CutsceneCamera");
+            if (cam != null)
+            {
+                cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+                var tex = new Texture2D(W, H, TextureFormat.RGB24, false); tex.ReadPixels(new Rect(0, 0, W, H), 0, 0); tex.Apply(); RenderTexture.active = null; frames.Add(tex);
+                Vector3 p = cam.transform.position;
+                foreach (var c in Physics.OverlapSphere(p, 0.2f, ~0, QueryTriggerInteraction.Ignore)) inside.Add($"collider {PathOf(c.transform)} @{Time.time - t0:F1}s");
+                foreach (var r in rends) if (r != null && r.enabled && r.gameObject.activeInHierarchy && r.bounds.Contains(p) && r.bounds.size.magnitude < 8f) inside.Add($"bounds {PathOf(r.transform)} @{Time.time - t0:F1}s");
+                Debug.Log($"[Lab] film {name} t={Time.time - t0:F2} cam {p.ToString("F2")} fwd {cam.transform.forward.ToString("F2")}");
+            }
+            for (float w = 0f; w < 0.25f && CutscenePlayer.IsPlaying; w += Time.deltaTime) yield return null;
+        }
+        Debug.Log($"[Lab] film {name} camera inside: {string.Join(" | ", inside)}");
+        int cols = 6, rows = (frames.Count + cols - 1) / cols;
+        var sheet = new Texture2D(W * cols, H * Mathf.Max(1, rows), TextureFormat.RGB24, false);
+        for (int i = 0; i < frames.Count; i++) sheet.SetPixels((i % cols) * W, (rows - 1 - i / cols) * H, W, H, frames[i].GetPixels());
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, $"film_{name}.jpg"), sheet.EncodeToJPG(88));
+    }
+
+    /// <summary>The storage room's two story cutscenes (power back, the door appearing), filmed, with the room laid out in a dump.</summary>
+    IEnumerator StoryCams()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var dump = new System.Text.StringBuilder();
+        var slots = FindObjectsByType<PlaceItemInteractable>(FindObjectsSortMode.None);
+        foreach (var s in slots) dump.AppendLine($"slot {PathOf(s.transform)} at {s.transform.position.ToString("F2")} fwd {s.transform.forward.ToString("F2")}");
+        foreach (var l in FindObjectsByType<Lever>(FindObjectsSortMode.None)) dump.AppendLine($"lever {PathOf(l.transform)} at {l.transform.position.ToString("F2")} fwd {l.transform.forward.ToString("F2")}");
+        var sp = FindAnyObjectByType<StoragePower>();
+        if (sp != null)
+        {
+            foreach (var l in sp.roomLights) if (l != null) dump.AppendLine($"roomlight {PathOf(l.transform)} at {l.transform.position.ToString("F2")}");
+            foreach (var l in sp.emergencyLights) if (l != null) dump.AppendLine($"emergency {PathOf(l.transform)} at {l.transform.position.ToString("F2")}");
+        }
+        // which levers each candidate camera spot can see
+        var spots = new[] { new Vector3(26.6f, 4.0f, 7.4f), new Vector3(25.2f, 4.3f, 6.2f), new Vector3(27.5f, 4.2f, 5.0f), new Vector3(26.0f, 4.2f, 9.5f), new Vector3(30f, 4.4f, 5f), new Vector3(33f, 4.4f, 5f), new Vector3(31f, 4.4f, 10f) };
+        foreach (var spot in spots)
+            foreach (var l in FindObjectsByType<Lever>(FindObjectsSortMode.None))
+            {
+                bool hit = Physics.Linecast(spot, l.transform.position + Vector3.up * 0.2f, out RaycastHit h, ~0, QueryTriggerInteraction.Ignore);
+                dump.AppendLine($"sight {spot.ToString("F1")} -> {l.name}: {(hit && !h.transform.IsChildOf(l.transform) ? "blocked by " + PathOf(h.transform) + " at " + h.distance.ToString("F1") : "clear")}");
+            }
+        Vector3 centre = slots.Length > 0 ? slots[0].transform.position : new Vector3(30f, 1.6f, 15f);
+        foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            if (!(r is ParticleSystemRenderer) && Vector3.Distance(r.bounds.center, centre) < 14f && r.bounds.size.magnitude > 0.6f)
+                dump.AppendLine($"rend {PathOf(r.transform)} centre {r.bounds.center.ToString("F2")} size {r.bounds.size.ToString("F2")}");
+        foreach (var f in FindObjectsByType<ItemPickup>(FindObjectsSortMode.None)) { f.Interact(); yield return new WaitForSeconds(0.2f); }
+        var key = FindAnyObjectByType<KeyPickup>(); if (key != null) key.Interact();
+        yield return null;
+        foreach (var k in FindObjectsByType<KeyDoorInteractable>(FindObjectsSortMode.None)) { if (k.canInteract) k.Interact(); yield return new WaitForSeconds(0.2f); }
+        var mover = FindAnyObjectByType<Movement>();
+        foreach (var p in slots) { p.Interact(); yield return new WaitForSeconds(0.2f); }
+        yield return FilmCutscene("power");
+        yield return new WaitForSeconds(1f);
+        foreach (var l in FindObjectsByType<Lever>(FindObjectsSortMode.None).OrderBy(l => l.symbolIndex)) { l.Interact(); yield return new WaitForSeconds(0.4f); }
+        yield return FilmCutscene("door");
+        var ending = GameObject.Find("ToEnding");
+        if (ending != null)
+        {
+            var door = ending.GetComponentInChildren<Door>(true);
+            var b = new Bounds(ending.transform.position, Vector3.zero);
+            foreach (var r in ending.GetComponentsInChildren<Renderer>()) { b.Encapsulate(r.bounds); dump.AppendLine($"ending rend {PathOf(r.transform)} centre {r.bounds.center.ToString("F2")} size {r.bounds.size.ToString("F2")}"); }
+            dump.AppendLine($"ending root {ending.transform.position.ToString("F2")} fwd {ending.transform.forward.ToString("F2")} bounds {b.center.ToString("F2")} size {b.size.ToString("F2")}; door {(door != null ? door.transform.position.ToString("F2") + " fwd " + door.transform.forward.ToString("F2") : "-")}");
+        }
+        if (mover != null) dump.AppendLine($"player at {mover.transform.position.ToString("F2")}");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(OutDir, "storycams.txt"), dump.ToString());
+        Debug.Log("[Lab] storycams done");
+    }
+
+    /// <summary>The house's windows: what the player's view costs looking at each pane, against looking away.</summary>
+    IEnumerator Windows()
+    {
+        QualitySettings.vSyncCount = 0; Application.targetFrameRate = -1;
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        var mover = FindAnyObjectByType<Movement>();
+        var look = mover.GetComponentInChildren<MouseLook>();
+        var cc = mover.GetComponent<CharacterController>();
+        var rec = new[] { "Draw Calls Count", "SetPass Calls Count", "Triangles Count", "Shadow Casters Count", "Visible Skinned Meshes Count" }
+            .Select(n => Unity.Profiling.ProfilerRecorder.StartNew(Unity.Profiling.ProfilerCategory.Render, n)).ToArray();
+        var timing = new FrameTiming[1];
+        var panes = FindObjectsByType<Renderer>(FindObjectsSortMode.None).Where(r => r.sharedMaterials.Any(m => m != null && (m.name.ToLower().Contains("glass") || m.name.ToLower().Contains("mirror")))).ToList();
+        Vector3 home = mover.transform.position;
+        int shot = 0;
+        IEnumerator Measure(string label, Vector3 feet, Vector3 target)
+        {
+            cc.enabled = false; mover.transform.position = new Vector3(feet.x, home.y, feet.z);
+            Vector3 d = Vector3.ProjectOnPlane(target - feet, Vector3.up); if (d.sqrMagnitude > 0.01f) mover.transform.rotation = Quaternion.LookRotation(d); cc.enabled = true;
+            if (look != null) look.SetPitch(0f);
+            for (int i = 0; i < 20; i++) yield return null;
+            double[] sum = new double[rec.Length]; var cpu = new System.Collections.Generic.List<double>(); var gpu = new System.Collections.Generic.List<double>();
+            for (int i = 0; i < 40; i++)
+            {
+                yield return null;
+                for (int k = 0; k < rec.Length; k++) sum[k] += rec[k].LastValue;
+                FrameTimingManager.CaptureFrameTimings();
+                if (FrameTimingManager.GetLatestTimings(1, timing) > 0) { cpu.Add(timing[0].cpuMainThreadFrameTime); gpu.Add(timing[0].gpuFrameTime); }
+            }
+            Debug.Log($"[Lab] windows {label}: draws {sum[0] / 40:F0} setpass {sum[1] / 40:F0} tris {sum[2] / 40 / 1000:F0}k shadowcasters {sum[3] / 40:F0} skinned {sum[4] / 40:F0} cpu {(cpu.Count > 0 ? cpu.Average() : 0):F1} ms gpu {(gpu.Count > 0 ? gpu.Average() : 0):F1} ms");
+            var cam = Camera.main; if (cam != null) Shot(cam, "window_" + (shot++), 640, 360);
+        }
+        yield return Measure("start view", home, home + mover.transform.forward);
+        foreach (var r in panes)
+        {
+            var b = r.bounds; Vector3 c = b.center;
+            Vector3 n = b.size.x < b.size.z ? Vector3.right : Vector3.forward;
+            Debug.Log($"[Lab] windows pane {PathOf(r.transform)} at {c.ToString("F2")} size {b.size.ToString("F2")} mats {string.Join(",", r.sharedMaterials.Where(m => m != null).Select(m => m.name + ":" + m.shader.name))}");
+            foreach (float side in new[] { 1f, -1f })
+            {
+                Vector3 feet = c + n * side * 3f;
+                yield return Measure($"{r.name} side {side:F0} facing (shot {shot})", feet, c);
+                yield return Measure($"{r.name} side {side:F0} away (shot {shot})", feet, feet + (feet - c));
+            }
+        }
+        foreach (var x in rec) x.Dispose();
+        Debug.Log("[Lab] windows done");
+    }
+
+    /// <summary>What glows in the White Space sky towards the sun: the view towards it with one thing after another switched off.</summary>
+    IEnumerator SunGlow()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        yield return new WaitForSeconds(1f);
+        var sun = FindObjectsByType<Light>(FindObjectsSortMode.None).FirstOrDefault(l => l.type == LightType.Directional);
+        var eye = Camera.main;
+        eye.transform.rotation = Quaternion.LookRotation(-sun.transform.forward);
+        var mover = FindAnyObjectByType<Movement>(); if (mover != null) mover.enabled = false;
+        var look = eye.GetComponentInParent<MouseLook>(); if (look != null) look.enabled = false;
+        IEnumerator Take(string label)
+        {
+            // where the sun's glint on the water is seen (looking down against its reflected ray), and the sun itself
+            Vector3 sf = sun.transform.forward;
+            eye.transform.rotation = Quaternion.LookRotation(new Vector3(-sf.x, sf.y, -sf.z));
+            yield return null; yield return null;
+            Shot(eye, "sunglow_" + label + "_water", 640, 480);
+            eye.transform.rotation = Quaternion.LookRotation(-sf);
+            yield return null; yield return null;
+            Shot(eye, "sunglow_" + label + "_sky", 640, 480);
+            Debug.Log($"[Lab] sunglow {label}");
+        }
+        yield return Take("0_as_is");
+        foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            Vector3 d = r.bounds.center - eye.transform.position;
+            if (Vector3.Angle(d, -sun.transform.forward) < 12f) Debug.Log($"[Lab] sunglow in line: {PathOf(r.transform)} {r.GetType().Name} dist {d.magnitude:F1} mats {string.Join(",", r.sharedMaterials.Where(m => m != null).Select(m => m.name + ":" + m.shader.name))}");
+        }
+        var ps = FindObjectsByType<ParticleSystemRenderer>(FindObjectsSortMode.None);
+        foreach (var p in ps) p.enabled = false;
+        yield return Take("1_no_particles");
+        foreach (var p in ps) p.enabled = true;
+        var vols = FindObjectsByType<UnityEngine.Rendering.Volume>(FindObjectsSortMode.None);
+        foreach (var v in vols) v.enabled = false;
+        yield return Take("2_no_volumes");
+        foreach (var v in vols) v.enabled = true;
+        sun.enabled = false;
+        yield return Take("3_sun_off");
+        sun.enabled = true;
+        sun.transform.rotation = Quaternion.Euler(38f, -28f, 0f);
+        yield return Take("4_sun_38");
+        Debug.Log("[Lab] sunglow done");
+    }
+
+    /// <summary>The end of her walk in a cutscene, as the player sees it (the cutscene camera) and from the side, a frame every 0.1 s.</summary>
+    IEnumerator WalkEnd()
+    {
+        HitchWatch.Enable();
+        EchoCharacterView actor = null;
+        for (float t = 0f; t < 90f; t += Time.deltaTime)
+        {
+            actor = FindObjectsByType<EchoCharacterView>(FindObjectsSortMode.None).FirstOrDefault(v => v.transform.root.GetComponent<Movement>() == null && v.transform.root.name.StartsWith("Protagonist") && v.gameObject.activeInHierarchy);
+            var a0 = actor != null ? actor.GetComponentInChildren<Animator>() : null;
+            if (a0 != null && a0.GetCurrentAnimatorClipInfo(0).Any(c => c.clip.name.StartsWith("Walk") && c.weight > 0.5f)) break;
+            yield return null;
+        }
+        if (actor == null) { Debug.Log("[Lab] walkend: no actor"); yield break; }
+        var an = actor.GetComponentInChildren<Animator>();
+        // from setting off until she has stood still for a moment; a side camera at her legs
+        var side = MakeCam(40f); side.enabled = false;
+        UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(side).renderPostProcessing = false;
+        const int W = 320, H = 360; var top = new System.Collections.Generic.List<Texture2D>(); var bottom = new System.Collections.Generic.List<Texture2D>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        Texture2D Grab(Camera c) { c.targetTexture = rt; c.Render(); c.targetTexture = null; RenderTexture.active = rt; var t = new Texture2D(W, H, TextureFormat.RGB24, false); t.ReadPixels(new Rect(0, 0, W, H), 0, 0); t.Apply(); RenderTexture.active = null; return t; }
+        var ev = an.GetComponent<EchoAnimationEvents>(); var feet = new System.Collections.Generic.List<string>(); float t0 = Time.time;
+        if (ev != null) { ev.LeftFoot += () => feet.Add($"L@{Time.time - t0:F2}"); ev.RightFoot += () => feet.Add($"R@{Time.time - t0:F2}"); }
+        Transform lf = an.GetBoneTransform(HumanBodyBones.LeftFoot), rf = an.GetBoneTransform(HumanBodyBones.RightFoot);
+        Vector3 l0 = lf.position, r0 = rf.position;
+        float held = -1f;
+        for (int i = 0; i < 200 && (held < 0f || Time.time - held < 1.6f); i++)
+        {
+            var cut = FindObjectsByType<Camera>(FindObjectsSortMode.None).FirstOrDefault(c => c.enabled && c.gameObject.name == "CutsceneCamera");
+            bool stopping = an.GetCurrentAnimatorClipInfo(0).Any(c => c.clip.name.StartsWith("Phase") || c.clip.name == "Idle") || held >= 0f;
+            if (cut != null && stopping) top.Add(Grab(cut));
+            Vector3 p = actor.transform.root.position, fwd = actor.transform.forward;
+            float s = Mathf.Abs(actor.transform.lossyScale.y);
+            side.transform.position = p + (Vector3.Cross(Vector3.up, fwd) + fwd).normalized * 1.7f * s + Vector3.up * 1.0f * s; side.transform.LookAt(p + Vector3.up * 0.95f * s);
+            if (stopping) bottom.Add(Grab(side));
+            Debug.Log($"[Lab] walkend {Time.time - t0:F2}s shot={HitchWatch.LastEvent} clips={string.Join(",", an.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.05f).Select(c => c.clip.name + ":" + c.weight.ToString("F1")))} L moved {(lf.position - l0).magnitude * 100f:F0} cm R moved {(rf.position - r0).magnitude * 100f:F0} cm");
+            if (held < 0f && an.GetCurrentAnimatorClipInfo(0).Any(c => c.clip.name.StartsWith("PhaseHold") && c.weight > 0.9f)) held = Time.time;
+            for (float w = 0f; w < 0.1f; w += Time.deltaTime) yield return null;
+        }
+        Debug.Log($"[Lab] walkend foot events: {string.Join(" ", feet)}");
+        int cols = 10, n = bottom.Count, rows = 2 * ((n + cols - 1) / cols);
+        var sheet = new Texture2D(W * cols, H * rows, TextureFormat.RGB24, false);
+        for (int i = 0; i < n; i++)
+        {
+            int col = i % cols, row = i / cols;
+            if (i < top.Count) sheet.SetPixels(col * W, (rows - 1 - row * 2) * H, W, H, top[i].GetPixels());
+            sheet.SetPixels(col * W, (rows - 2 - row * 2) * H, W, H, bottom[i].GetPixels());
+        }
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, $"walkend_{SceneManager.GetActiveScene().name}.jpg"), sheet.EncodeToJPG(88));
+        Debug.Log("[Lab] walkend done");
+    }
+
+    /// <summary>
+    /// Her arms from walking into standing (and setting off again): the player's body walks, the keys are let
+    /// go, and for three seconds every arm bone's turning speed is measured (a snap shows as a spike), with a
+    /// full-body film of the forward case.
+    /// </summary>
+    IEnumerator ArmIdle()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var dm = FindAnyObjectByType<DialogueManager>();
+        for (float t = 0f; t < 30f && dm != null && dm.IsTalking(); t += 0.3f) { dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return new WaitForSeconds(0.3f); }
+        yield return new WaitForSeconds(1f);
+        var mover = FindAnyObjectByType<Movement>();
+        var cc = mover.GetComponent<CharacterController>();
+        var body = mover.transform.Find("PlayerBody");
+        var anim = body.GetComponentInChildren<Animator>();
+        foreach (var r in body.GetComponentsInChildren<Renderer>(true)) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(30f); cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.42f, 0.44f, 0.5f);
+        var bones = new[] { HumanBodyBones.LeftShoulder, HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand,
+                            HumanBodyBones.RightShoulder, HumanBodyBones.RightUpperArm, HumanBodyBones.RightLowerArm, HumanBodyBones.RightHand,
+                            HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.Neck, HumanBodyBones.Head }
+            .Select(b => (b, t: anim.GetBoneTransform(b))).Where(x => x.t != null).ToArray();
+        Vector3 home = mover.transform.position; float s = PlayerAvatar.ModelScale;
+        const int W = 260, H = 420; var film = new System.Collections.Generic.List<Texture2D>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        var cases = new (string name, Vector2 input, bool run, float hold)[] { ("forward", new Vector2(0, 1), false, 2.2f), ("right", new Vector2(1, 0), false, 2.2f), ("back", new Vector2(0, -1), false, 2.2f), ("run", new Vector2(0, 1), true, 2.4f), ("tap", new Vector2(0, 1), false, 0.35f) };
+        // her standing pose before anything moves, for comparison with how she stands after a stop
+        {
+            Vector3 c0 = body.position + Vector3.up * 0.8f * s;
+            cam.transform.position = c0 + (Vector3.right * 0.8f + Vector3.forward).normalized * 3.4f * s; cam.transform.LookAt(c0);
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+            var idle = new Texture2D(W, H, TextureFormat.RGB24, false); idle.ReadPixels(new Rect(0, 0, W, H), 0, 0); idle.Apply(); RenderTexture.active = null; film.Add(idle);
+            Debug.Log($"[Lab] armidle idle clips {string.Join("+", anim.GetCurrentAnimatorClipInfo(0).Select(c => c.clip.name))}");
+        }
+        foreach (var cs in cases)
+        {
+            cc.enabled = false; mover.transform.position = home; mover.transform.rotation = Quaternion.identity; cc.enabled = true;
+            Movement.LabInput = Vector2.zero; Movement.LabRun = false;
+            for (float q = 0f; q < 20f && dm != null && dm.IsTalking(); q += 0.3f) { dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver); yield return new WaitForSeconds(0.3f); }
+            yield return new WaitForSeconds(1.2f);
+            Movement.LabInput = cs.input; Movement.LabRun = cs.run;
+            // the start is measured too: the arms going from standing into the walk
+            var local = bones.Select(x => x.t.localRotation).ToArray();
+            float worstStart = 0f; string worstStartAt = "";
+            for (float w = 0f; w < cs.hold; w += Time.deltaTime)
+            {
+                if (dm != null && dm.IsTalking()) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver);
+                yield return null;
+                for (int i = 0; i < bones.Length; i++)
+                {
+                    float rate = Quaternion.Angle(local[i], bones[i].t.localRotation) / Mathf.Max(0.001f, Time.deltaTime);
+                    if (rate > worstStart && w > 0.05f) { worstStart = rate; worstStartAt = $"{bones[i].b} {w:F2}s {string.Join("+", anim.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.1f).Select(c => c.clip.name))}"; }
+                    local[i] = bones[i].t.localRotation;
+                }
+            }
+            Movement.LabInput = Vector2.zero; Movement.LabRun = false;
+            float worst = 0f; string worstAt = ""; var states = new System.Collections.Generic.List<string>();
+            float nextShot = 0f;
+            for (float w = 0f; w < (cs.name == "forward" ? 7f : 3f); w += Time.deltaTime)
+            {
+                if (dm != null && dm.IsTalking()) dm.SendMessage("NextLine", SendMessageOptions.DontRequireReceiver);
+                yield return null;
+                string st = string.Join("+", anim.GetCurrentAnimatorClipInfo(0).Where(c => c.weight > 0.1f).Select(c => c.clip.name));
+                if (states.Count == 0 || states[states.Count - 1].Split('@')[0] != st) states.Add($"{st}@{w:F2}");
+                for (int i = 0; i < bones.Length; i++)
+                {
+                    float rate = Quaternion.Angle(local[i], bones[i].t.localRotation) / Mathf.Max(0.001f, Time.deltaTime);
+                    if (rate > worst) { worst = rate; worstAt = $"{bones[i].b} {w:F2}s {st}"; }
+                    local[i] = bones[i].t.localRotation;
+                }
+                if (cs.name == "forward" && w >= nextShot)
+                {
+                    nextShot += 0.15f;
+                    Vector3 c0 = body.position + Vector3.up * 0.8f * s;
+                    cam.transform.position = c0 + (Vector3.right * 0.8f + Vector3.forward).normalized * 3.4f * s; cam.transform.LookAt(c0);
+                    cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+                    var tex = new Texture2D(W, H, TextureFormat.RGB24, false); tex.ReadPixels(new Rect(0, 0, W, H), 0, 0); tex.Apply(); RenderTexture.active = null; film.Add(tex);
+                }
+            }
+            Debug.Log($"[Lab] armidle {cs.name}: start peak {worstStart:F0} deg/s at {worstStartAt}; stop peak {worst:F0} deg/s at {worstAt}; states {string.Join(" > ", states)}");
+        }
+        Movement.LabInput = null; Movement.LabRun = false;
+        int cols = 10, rowsN = (film.Count + cols - 1) / cols;
+        var sheet = new Texture2D(W * cols, H * Mathf.Max(1, rowsN), TextureFormat.RGB24, false);
+        for (int i = 0; i < film.Count; i++) sheet.SetPixels((i % cols) * W, (rowsN - 1 - i / cols) * H, W, H, film[i].GetPixels());
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, "armidle.jpg"), sheet.EncodeToJPG(88));
+        Debug.Log("[Lab] armidle done");
+    }
+
+    /// <summary>
+    /// What moves her hair: the skin weights of every hair mesh by bone group (the springy HairFlow chains,
+    /// the old keyed hair bones, the head), and how far the hair's lowest vertices travel against the head
+    /// while she walks, stops and turns, with the springs on and off.
+    /// </summary>
+    IEnumerator HairWeights()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        Vector3 spot = CharacterLibrary.GroundBelow(mover.transform.position + mover.transform.forward * 3f);
+        var hero = CharacterLibrary.Spawn(false, spot, Vector3.forward);
+        var root = hero.transform.root; root.position = spot;
+        var anim = root.GetComponentInChildren<Animator>();
+        var head = anim.GetBoneTransform(HumanBodyBones.Head);
+        var sm = root.GetComponentInChildren<EchoSecondaryMotion>();
+        var hair = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => r.name.ToLower().Contains("hair")).ToArray();
+        string Group(string n) => n.StartsWith("HairFlow") ? "HairFlow" : n.StartsWith("HairBang") || n.StartsWith("HairSide") || n.StartsWith("HairBack") ? "OldHairBones" : n.StartsWith("Hair") ? "OtherHair" : n == head.name ? "Head" : "Other:" + n;
+        foreach (var r in hair)
+        {
+            var bw = r.sharedMesh.GetAllBoneWeights(); var bones = r.bones;
+            var sums = new System.Collections.Generic.Dictionary<string, float>(); float total = 0f;
+            foreach (var w in bw) { string g = Group(bones[w.boneIndex].name); sums[g] = (sums.TryGetValue(g, out var v) ? v : 0f) + w.weight; total += w.weight; }
+            Debug.Log($"[Lab] hairweights {r.name}: {r.sharedMesh.vertexCount} verts; " + string.Join(", ", sums.OrderByDescending(kv => kv.Value).Take(6).Select(kv => $"{kv.Key} {100f * kv.Value / Mathf.Max(1e-6f, total):F0}%")));
+        }
+        // the old keyed hair bones: do the clips still move them?
+        var oldBones = root.GetComponentsInChildren<Transform>().Where(b => Group(b.name) == "OldHairBones").ToArray();
+        Debug.Log($"[Lab] hairweights old hair bones in the rig: {oldBones.Length} ({string.Join(",", oldBones.Take(6).Select(b => b.name))})");
+        var motion = hero.GetComponent<EchoLocomotion>();
+        var baked = new Mesh();
+        // the lowest fifth of each hair mesh (the ends), in head space at rest
+        var ends = hair.Select(r =>
+        {
+            r.BakeMesh(baked, true); var v = baked.vertices;
+            var ws = v.Select(p => head.InverseTransformPoint(r.transform.TransformPoint(p))).ToArray();
+            float lo = ws.Min(p => p.y), hi = ws.Max(p => p.y);
+            var idx = Enumerable.Range(0, ws.Length).Where(i => ws[i].y < lo + (hi - lo) * 0.2f).ToArray();
+            return (r, idx, rest: idx.Select(i => ws[i]).ToArray());
+        }).ToArray();
+        IEnumerator Run(string label)
+        {
+            float maxD = 0f, sumD = 0f; int n = 0; float oldMax = 0f;
+            var oldRest = oldBones.Select(b => b.localRotation).ToArray();
+            // walk 2 s, stop, then whip round 110 degrees and back, as the player does
+            root.position = spot; root.rotation = Quaternion.identity;
+            Vector3 a = spot, b = spot + Vector3.forward * 2.4f * Mathf.Abs(root.lossyScale.y);
+            for (float t = 0f; t < 5.5f; t += Time.deltaTime)
+            {
+                if (t < 3.6f) CharacterLibrary.Walk(hero, a, b, Mathf.Clamp01(t / 3.6f) * 0.999f + 0.0005f, 3.6f);
+                else { float k = t < 4.0f ? (t - 3.6f) / 0.4f : t < 4.8f ? 1f : Mathf.Max(0f, 1f - (t - 4.8f) / 0.4f); root.rotation = Quaternion.Euler(0f, 110f * Mathf.SmoothStep(0f, 1f, k), 0f); }
+                yield return new WaitForEndOfFrame();
+                foreach (var e in ends)
+                {
+                    e.r.BakeMesh(baked, true); var v = baked.vertices;
+                    for (int j = 0; j < e.idx.Length; j += 7) { float d = (head.InverseTransformPoint(e.r.transform.TransformPoint(v[e.idx[j]])) - e.rest[j]).magnitude * head.lossyScale.y * 100f / Mathf.Abs(root.lossyScale.y); maxD = Mathf.Max(maxD, d); sumD += d; n++; }
+                }
+                for (int i = 0; i < oldBones.Length; i++) oldMax = Mathf.Max(oldMax, Quaternion.Angle(oldRest[i], oldBones[i].localRotation));
+            }
+            Debug.Log($"[Lab] hairweights {label}: hair ends move against the head max {maxD:F1} cm, mean {sumD / Mathf.Max(1, n):F2} cm (scale 1); old hair bones turned up to {oldMax:F1} deg");
+        }
+        yield return new WaitForSeconds(1f);
+        yield return Run("springs on");
+        sm.enabled = false;
+        yield return new WaitForSeconds(0.5f);
+        yield return Run("springs off (keys only)");
+        sm.enabled = true;
+        Debug.Log("[Lab] hairweights done");
+    }
+
+    /// <summary>
+    /// Her hair as it really moves (a cutscene actor, collision on): standing, walking, stopping, a quick turn
+    /// and back, looking around. Every frame the bend at each hair joint is measured against its rest bend,
+    /// and any joint that snaps (its bend changing by more than 15 degrees in one frame) is logged; close
+    /// frames of her hair every 0.1 s, plus the frames around the worst snap.
+    /// </summary>
+    IEnumerator HairLook()
+    {
+        for (float t = 0f; t < 60f && (CutscenePlayer.IsPlaying || GameState.IsCutscene); t += Time.deltaTime) yield return null;
+        var mover = FindAnyObjectByType<Movement>();
+        Vector3 spot = CharacterLibrary.GroundBelow(mover.transform.position + mover.transform.forward * 3f);
+        var hero = CharacterLibrary.Spawn(false, spot, Vector3.forward);
+        var root = hero.transform.root; root.position = spot; root.rotation = Quaternion.identity;
+        var anim = root.GetComponentInChildren<Animator>();
+        var head = anim.GetBoneTransform(HumanBodyBones.Head);
+        var sm = root.GetComponentInChildren<EchoSecondaryMotion>();
+        Debug.Log($"[Lab] hairlook collision={sm.hairCollision} angle={sm.hairMaxAngle} freq={sm.hairFrequency} damp={sm.hairDamping} inertia={sm.hairInertia}");
+        foreach (var c in FindObjectsByType<Camera>(FindObjectsSortMode.None)) c.enabled = false;
+        var cam = MakeCam(30f); cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.42f, 0.44f, 0.5f);
+        UnityEngine.Rendering.Universal.CameraExtensions.GetUniversalAdditionalCameraData(cam).renderPostProcessing = false;
+        float s = Mathf.Abs(root.lossyScale.y);
+        // each hair chain: its joints in order (HairFlowNN_01.._03 and any child below)
+        var chains = root.GetComponentsInChildren<Transform>().Where(b => b.name.StartsWith("HairFlow") && b.name.EndsWith("_01"))
+            .Select(b => { var list = new System.Collections.Generic.List<Transform> { b }; var c = b; while (c.childCount > 0) { c = c.GetChild(0); list.Add(c); } return list.ToArray(); })
+            .Where(l => l.Length >= 3).ToArray();
+        float Bend(Transform a, Transform b, Transform c) => Vector3.Angle(b.position - a.position, c.position - b.position);
+        var rest = chains.Select(l => Enumerable.Range(1, l.Length - 2).Select(i => Bend(l[i - 1], l[i], l[i + 1])).ToArray()).ToArray();
+        var prev = rest.Select(r => (float[])r.Clone()).ToArray();
+        Debug.Log($"[Lab] hairlook chains {chains.Length} of {chains.Select(l => l.Length).DefaultIfEmpty(0).Max()} joints; rest bends {string.Join(" ", rest.Take(6).Select(r => string.Join("/", r.Select(x => x.ToString("F0")))))}");
+        const int W = 220, H = 240; var frames = new System.Collections.Generic.List<(float t, string phase, Texture2D tex)>();
+        var rt = new RenderTexture(W, H, 24) { antiAliasing = 4 };
+        void Grab(float t, string phase)
+        {
+            Vector3 h = head.position;
+            Vector3 back = -root.forward;
+            cam.transform.position = h + (back * 0.75f + root.right * 0.45f + Vector3.up * 0.12f).normalized * 0.95f * s; cam.transform.LookAt(h - Vector3.up * 0.06f * s);
+            cam.targetTexture = rt; cam.Render(); cam.targetTexture = null; RenderTexture.active = rt;
+            var tex = new Texture2D(W, H, TextureFormat.RGB24, false); tex.ReadPixels(new Rect(0, 0, W, H), 0, 0); tex.Apply(); RenderTexture.active = null; frames.Add((t, phase, tex));
+        }
+        float worstSnap = 0f, worstT = 0f; string worstWhere = ""; int snaps = 0; float maxDev = 0f; string maxDevWhere = "";
+        var phaseOf = new System.Collections.Generic.Dictionary<string, (float snap, float dev, int count)>();
+        Vector3 a = spot, bEnd = spot + Vector3.forward * 2.6f * s;
+        float next = 0f;
+        for (float t = 0f; t < 9f; t += Time.deltaTime)
+        {
+            string phase;
+            if (t < 1f) phase = "stand";
+            else if (t < 4.6f) { phase = "walk+stop"; CharacterLibrary.Walk(hero, a, bEnd, Mathf.Clamp01((t - 1f) / 3.6f) * 0.999f + 0.0005f, 3.6f); }
+            else if (t < 6.4f) { phase = "turn110"; float k = t < 5.0f ? (t - 4.6f) / 0.4f : t < 5.6f ? 1f : Mathf.Max(0f, 1f - (t - 5.6f) / 0.4f); root.rotation = Quaternion.Euler(0f, 110f * Mathf.SmoothStep(0f, 1f, k), 0f); }
+            else { phase = "lookaround"; if (t - Time.deltaTime < 6.4f) hero.LookAround(); }
+            yield return new WaitForEndOfFrame();
+            for (int c = 0; c < chains.Length; c++)
+                for (int j = 1; j < chains[c].Length - 1; j++)
+                {
+                    float bend = Bend(chains[c][j - 1], chains[c][j], chains[c][j + 1]);
+                    float jump = Mathf.Abs(bend - prev[c][j - 1]); float dev = bend - rest[c][j - 1];
+                    if (jump > 15f) snaps++;
+                    if (jump > worstSnap) { worstSnap = jump; worstT = t; worstWhere = $"{chains[c][j].name} {phase}"; }
+                    if (dev > maxDev) { maxDev = dev; maxDevWhere = $"{chains[c][j].name} {phase} t={t:F2}"; }
+                    phaseOf.TryGetValue(phase, out var ps); phaseOf[phase] = (Mathf.Max(ps.snap, jump), Mathf.Max(ps.dev, dev), ps.count + (jump > 15f ? 1 : 0));
+                    prev[c][j - 1] = bend;
+                }
+            if (t >= next) { next += 0.1f; Grab(t, phase); }
+        }
+        Debug.Log($"[Lab] hairlook snaps (>15 deg in a frame): {snaps}; worst {worstSnap:F0} deg at {worstWhere} t={worstT:F2}; most bent {maxDev:F0} deg past rest at {maxDevWhere}");
+        foreach (var kv in phaseOf) Debug.Log($"[Lab] hairlook {kv.Key}: worst frame jump {kv.Value.snap:F0} deg, most bent {kv.Value.dev:F0} deg past rest, snaps {kv.Value.count}");
+        int cols = 10, rows = (frames.Count + cols - 1) / cols;
+        var sheet = new Texture2D(W * cols, H * Mathf.Max(1, rows), TextureFormat.RGB24, false);
+        for (int i = 0; i < frames.Count; i++) sheet.SetPixels((i % cols) * W, (rows - 1 - i / cols) * H, W, H, frames[i].tex.GetPixels());
+        sheet.Apply(); System.IO.File.WriteAllBytes(System.IO.Path.Combine(OutDir, "hairlook.jpg"), sheet.EncodeToJPG(90));
+        Debug.Log($"[Lab] hairlook frames {frames.Count}: " + string.Join(" ", frames.Select((f, i) => i % 10 == 0 ? $"row{i / 10}={f.phase}@{f.t:F1}" : null).Where(x => x != null)));
+        Debug.Log("[Lab] hairlook done");
+    }
+
     IEnumerator Perf()
     {
         yield return new WaitForSeconds(3f);

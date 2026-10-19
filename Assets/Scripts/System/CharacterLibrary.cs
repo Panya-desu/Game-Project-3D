@@ -43,17 +43,16 @@ public class CharacterLibrary : ScriptableObject
     /// <summary>
     /// Moves a character from a to b with the walk cycle (the clips are in place, so the root is moved here).
     /// Call every frame with k = 0..1 over a walk lasting <paramref name="seconds"/>. She sets off over half
-    /// a second, walks at an even pace and comes to a stop the way the player does (a quarter of a second),
-    /// so her stop (EchoCharacters' WalkStop, a step that brings the feet together in place) starts as she
-    /// arrives. The old ease slowed her over the last second: she shuffled on at a crawl and then made
-    /// her stop step after she had arrived, like one step too many.
+    /// a second, walks at an even pace and settles into standing where she is as she arrives (under half a
+    /// second, as the player does). The old ease slowed her over the last second: she shuffled on at a
+    /// crawl and then made a stop step after she had arrived, like one step too many.
     /// </summary>
     public static void Walk(EchoCharacterView view, Vector3 a, Vector3 b, float k, float seconds)
     {
         if (view == null) return;
         var motion = view.GetComponent<EchoLocomotion>();
         float T = Mathf.Max(0.5f, seconds);
-        float ta = Mathf.Min(0.5f, T * 0.3f), td = Mathf.Min(0.25f, T * 0.2f);
+        float ta = Mathf.Min(0.5f, T * 0.3f), td = Mathf.Min(0.45f, T * 0.2f);
         float full = T - ta * 0.5f - td * 0.5f;
         float t = Mathf.Clamp01(k) * T;
         float s = t < ta ? 0.5f * t * t / ta
@@ -62,10 +61,14 @@ public class CharacterLibrary : ScriptableObject
         Vector3 next = Vector3.Lerp(a, b, Mathf.Clamp01(s / full));
         var state = view.GetComponent<CutsceneWalkState>() ?? view.gameObject.AddComponent<CutsceneWalkState>();
         bool reset = state.lastK < 0f || k < state.lastK;
+        // as the player's body: when she slows down her stride eases into standing where she is, with no stop
+        // clip (the package's stops always bring the back foot up beside the front one, one more step)
+        bool stopping = t >= T - td;
         Vector3 velocity = !reset && Time.deltaTime > 0f && k < 1f ? (next - view.transform.position) / Time.deltaTime : Vector3.zero;
         view.transform.position = next;
         if (motion != null)
         {
+            motion.useTransitionClips = !stopping;   // her start clip still plays when she sets off
             motion.SetVelocity(velocity);
             motion.SetFacing(b - a);
         }

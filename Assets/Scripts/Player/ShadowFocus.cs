@@ -46,6 +46,7 @@ public class ShadowFocus : MonoBehaviour
             if (l.type == LightType.Directional || l.shadows == LightShadows.None) continue;
             var data = Data(l);
             lamps.Add((l, data));
+            castsShadow[l] = (l.shadows, l.shadowStrength);
             TierField.SetValue(data, Low);
             SetBodyShadow(data, false);
         }
@@ -88,14 +89,44 @@ public class ShadowFocus : MonoBehaviour
         return true;
     }
 
+    // Only the lamps nearest her draw shadows. Every point lamp's shadow is six shadow maps drawn each frame:
+    // with all 21 lamps of the house that was 115 maps (shrunk to fit the atlas) and their soft filtering on
+    // every pixel, 35-63 ms of GPU a frame at 2560x1600 in the house. A lamp further away fades its shadow
+    // out over a moment and then stops drawing it; coming nearer, it fades back in, so nothing pops.
+    const int ShadowLamps = 4;
+    const float ShadowFade = 0.5f;
+    readonly Dictionary<Light, (LightShadows type, float strength)> castsShadow = new Dictionary<Light, (LightShadows, float)>();
+    readonly HashSet<Light> wantShadow = new HashSet<Light>();
+
+    void FadeShadows()
+    {
+        foreach (var (l, _) in lamps)
+        {
+            if (l == null || !castsShadow.TryGetValue(l, out var cast)) continue;
+            bool want = wantShadow.Contains(l);
+            if (want && l.shadows == LightShadows.None) { l.shadows = cast.type; l.shadowStrength = 0f; }
+            if (l.shadows == LightShadows.None) continue;
+            l.shadowStrength = Mathf.MoveTowards(l.shadowStrength, want ? cast.strength : 0f, cast.strength * Time.unscaledDeltaTime / ShadowFade);
+            if (!want && l.shadowStrength <= 0f) l.shadows = LightShadows.None;
+        }
+    }
+
     void Update()
     {
+        FadeShadows();
         if (Time.unscaledTime < next) return;
         next = Time.unscaledTime + 0.25f;
-        Vector3 p = transform.position + Vector3.up;
+        // around what is being seen: her eyes, or the cutscene camera wherever it looks
+        var view = Camera.main;
+        Vector3 p = view != null ? view.transform.position : transform.position + Vector3.up;
         lamps.Sort((a, b) => Score(a.light, p).CompareTo(Score(b.light, p)));
+        bool first = wantShadow.Count == 0;
+        wantShadow.Clear();
         for (int i = 0; i < lamps.Count; i++)
         {
+            if (i < ShadowLamps && Score(lamps[i].light, p) < float.MaxValue) wantShadow.Add(lamps[i].light);
+            // the first time (behind the scene's fade-in) the far lamps drop their shadows at once
+            else if (first && lamps[i].light != null) lamps[i].light.shadows = LightShadows.None;
             TierField.SetValue(lamps[i].data, i == 0 ? High : i == 1 ? Medium : Low);
             // without the flattened shadow (no shader / no body), the nearest lamp still draws her
             SetBodyShadow(lamps[i].data, planar == null && i == 0 && Score(lamps[i].light, p) < 1000f);

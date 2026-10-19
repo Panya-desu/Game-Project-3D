@@ -13,6 +13,54 @@ public static class Lab
     [MenuItem("Tools/Dev/Lab: Mix All Sounds (Level_1)")]
     public static void MixAll() => Start("Assets/Scenes/Level_1.unity", "mixall");
 
+    [MenuItem("Tools/Dev/Lab: Hair Motion (White Space)")]
+    public static void HairMotion() => Start("Assets/Scenes/WhiteSpace.unity", "hairmotion");
+
+    [MenuItem("Tools/Dev/Lab: Story Cams")]
+    public static void StoryCams() => Start("Assets/Scenes/Level_1.unity", "storycams");
+
+    [MenuItem("Tools/Dev/Lab: Windows")]
+    public static void Windows() => Start("Assets/Scenes/Level_1.unity", "windows");
+
+    [MenuItem("Tools/Dev/Lab: Sun Glow")]
+    public static void SunGlow() => Start("Assets/Scenes/WhiteSpace.unity", "sunglow");
+
+    [MenuItem("Tools/Dev/Lab: Walk End (White Space)")]
+    public static void WalkEndWhite() => Start("Assets/Scenes/WhiteSpace.unity", "walkend");
+
+    [MenuItem("Tools/Dev/Lab: Arms Walk To Idle")]
+    public static void ArmIdle() => Start("Assets/Scenes/WhiteSpace.unity", "armidle");
+
+    [MenuItem("Tools/Dev/Lab: Hair Weights")]
+    public static void HairWeights() => Start("Assets/Scenes/WhiteSpace.unity", "hairweights");
+
+    [MenuItem("Tools/Dev/Lab: Hair Look")]
+    public static void HairLook() => Start("Assets/Scenes/WhiteSpace.unity", "hairlook");
+
+    [MenuItem("Tools/Dev/Lab: Walk End (Confrontation)")]
+    public static void WalkEndConfront() => Start("Assets/Scenes/Confrontation.unity", "walkend");
+
+    [MenuItem("Tools/Dev/Lab: Frame Cost (Title)")]
+    public static void CostTitle() => Start("Assets/Scenes/Main.unity", "cost");
+
+    [MenuItem("Tools/Dev/Lab: Frame Cost (Level_1)")]
+    public static void CostLevel() => Start("Assets/Scenes/Level_1.unity", "cost");
+
+    [MenuItem("Tools/Dev/Lab: Eye Shot (White Space)")]
+    public static void EyeShotWhite() => Start("Assets/Scenes/WhiteSpace.unity", "eyeshot");
+
+    [MenuItem("Tools/Dev/Lab: Eye Shot (Bedroom)")]
+    public static void EyeShotBedroom() => Start("Assets/Scenes/Level_1.unity", "eyeshot");
+
+    [MenuItem("Tools/Dev/Lab: Walk Check (White Space)")]
+    public static void WalkCheck() => Start("Assets/Scenes/WhiteSpace.unity", "walkcheck");
+
+    [MenuItem("Tools/Dev/Lab: Stop Film (White Space)")]
+    public static void StopFilm() => Start("Assets/Scenes/WhiteSpace.unity", "stopfilm");
+
+    [MenuItem("Tools/Dev/Lab: Stops (White Space)")]
+    public static void Stops() => Start("Assets/Scenes/WhiteSpace.unity", "stops");
+
     [MenuItem("Tools/Dev/Lab: Cutscene Sounds (White Space)")]
     public static void CutSoundsWhite() => Start("Assets/Scenes/WhiteSpace.unity", "cutsounds");
 

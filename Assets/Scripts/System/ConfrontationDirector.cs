@@ -161,7 +161,7 @@ public class ConfrontationDirector : MonoBehaviour
         Vector3 dEnd = new Vector3(feet.x, dStart.y, feet.z) + toDouble * 0.9f;
         Color red = new Color(0.6f, 0.15f, 0.15f);
         bool reached = false;
-        Vector3 walkStart = feet;
+        Vector3 walkStart = feet, walkEnd = feet; float walkFrom = 0.2f;
         // HitReact steps her back a little: the motion is handed to us to move her (it is not pulled back)
         var endingMotion = hero != null ? hero.GetComponent<EchoEndingMotion>() : null;
         if (endingMotion != null) endingMotion.MotorDisplacement += delta => hero.transform.root.position += delta;
@@ -202,7 +202,7 @@ public class ConfrontationDirector : MonoBehaviour
                                     onStart: () =>
                                     {
                                         GameAudio.PlaySfx("memory_whoosh");
-                                        if (hero != null) { hero.SetTalking(false); walkStart = hero.transform.position; }
+                                        if (hero != null) { hero.SetTalking(false); walkStart = hero.transform.position; walkEnd = walkStart + toDouble * 3.5f; }
                                         CutscenePlayer.Caption("Wait for me, Evie. I'm going to remember.", 5.5f);
                                     },
                                     onUpdate: k =>
@@ -211,7 +211,7 @@ public class ConfrontationDirector : MonoBehaviour
                                         // the last seconds before the end screen fall quiet
                                         if (k > 0.72f && GameAudio.CurrentAmbient != null) { GameAudio.Hush(1.6f); WindDrift.Calm = true; }
                                         // she walks on, towards where it stood
-                                        if (k > 0.2f) CharacterLibrary.Walk(hero, walkStart, walkStart + toDouble * 3.5f, (k - 0.2f) / 0.8f, 6.5f * 0.8f);
+                                        if (k > walkFrom) CharacterLibrary.Walk(hero, walkStart, walkEnd, (k - walkFrom) / (1f - walkFrom), 6.5f * 0.8f);
                                     }),
         };
         CutscenePlayer.Play(shots, () => ScreenFader.LoadScene(nextScene, 2.5f, Color.white), returnControl: false);

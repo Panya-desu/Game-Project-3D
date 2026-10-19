@@ -35,6 +35,19 @@ public class CutscenePlayer : MonoBehaviour
     public static int Played { get; private set; }
     static CutscenePlayer instance;
 
+    /// <summary>
+    /// For a shot that ends inside her eyes: hides the character the moment the camera comes close to her head,
+    /// before it passes into it (going by how far along the shot is let it clip through her face first).
+    /// </summary>
+    public static void HideWhenCameraReaches(GameObject character, float distance)
+    {
+        if (character == null || !character.activeSelf || instance == null || instance.cam == null) return;
+        var anim = character.GetComponentInChildren<Animator>();
+        var head = anim != null && anim.isHuman ? anim.GetBoneTransform(HumanBodyBones.Head) : null;
+        Vector3 h = head != null ? head.position : character.transform.position + Vector3.up * 1.4f * PlayerAvatar.ModelScale;
+        if (Vector3.Distance(instance.cam.transform.position, h) < distance) character.SetActive(false);
+    }
+
     RectTransform top, bottom;
     CanvasGroup fade, skipHint, captionGroup;
     TextMeshProUGUI captionText;
@@ -50,12 +63,14 @@ public class CutscenePlayer : MonoBehaviour
     /// Plays the shots in order, then gives control back and calls onEnd.
     /// With returnControl false the last shot stays on screen and onEnd is expected to change scene.
     /// startFrom: colour the screen fades in from (null = no fade).
+    /// intoEyes: the last shot ends exactly in the player's eyes; during it the lens (field of view, depth of
+    /// field, vignette, hand-held drift) turns into the player's own, and control comes back without a cut.
     /// </summary>
-    public static void Play(IList<Shot> shots, Action onEnd = null, bool returnControl = true, Color? startFrom = null)
+    public static void Play(IList<Shot> shots, Action onEnd = null, bool returnControl = true, Color? startFrom = null, bool intoEyes = false)
     {
         if (IsPlaying || shots == null || shots.Count == 0) { onEnd?.Invoke(); return; }
         Ensure();
-        instance.StartCoroutine(instance.Run(shots, onEnd, returnControl, startFrom));
+        instance.StartCoroutine(instance.Run(shots, onEnd, returnControl, startFrom, intoEyes && returnControl));
     }
 
     /// <summary>Narration in the middle of the screen, fading in and out (story captions).</summary>
@@ -91,7 +106,7 @@ public class CutscenePlayer : MonoBehaviour
         if (IsPlaying) { IsPlaying = false; GameState.IsCutscene = false; GameHud.SetVisible(true); }
     }
 
-    IEnumerator Run(IList<Shot> shots, Action onEnd, bool returnControl, Color? startFrom)
+    IEnumerator Run(IList<Shot> shots, Action onEnd, bool returnControl, Color? startFrom, bool intoEyes)
     {
         IsPlaying = true;
         Played++;
@@ -113,7 +128,8 @@ public class CutscenePlayer : MonoBehaviour
             playerCam.enabled = false;
         }
         cam.tag = "MainCamera";
-        cam.fieldOfView = 50f;
+        float eyeFov = playerCam != null ? playerCam.fieldOfView : 60f;
+        cam.fieldOfView = CinemaFov;
 
         // the player's own body (a test capsule) must not block the cinematic shots
         hiddenPlayer.Clear();
@@ -161,15 +177,29 @@ public class CutscenePlayer : MonoBehaviour
             var s = shots[i];
             HitchWatch.Note("cutscene shot " + i);
             s.onStart?.Invoke();
+            bool toEyes = intoEyes && i == shots.Count - 1;
             for (float t = 0; t < s.seconds && !skip; t += Time.deltaTime)
             {
                 float k = Mathf.SmoothStep(0f, 1f, t / s.seconds);
+                // into her eyes: the cinematic lens becomes the player's as the camera arrives, so the
+                // hand-over has no jump in framing (50 to 60 degrees read as the camera leaping back)
+                float cinema = toEyes ? 1f - k : 1f;
                 cam.transform.position = Vector3.Lerp(s.from, s.to, k);
                 Vector3 look = Vector3.Lerp(s.lookFrom, s.lookTo, k);
-                cam.transform.rotation = Quaternion.LookRotation(look - cam.transform.position) * HandHeld();
+                cam.transform.rotation = Quaternion.LookRotation(look - cam.transform.position) * Quaternion.Slerp(Quaternion.identity, HandHeld(), cinema);
                 dof.focusDistance.value = Mathf.Max(0.3f, Vector3.Distance(cam.transform.position, look));
+                if (toEyes) { cam.fieldOfView = Mathf.Lerp(eyeFov, CinemaFov, cinema); lens.weight = cinema; }
+                // her own (shadow-only) body takes over as the actor is hidden near the end, so her shadow
+                // never blinks out on the floor
+                if (toEyes && t / s.seconds > 0.9f) ShowPlayerBody();
                 s.onUpdate?.Invoke(t / s.seconds);
                 yield return null;
+            }
+            if (toEyes && !skip)
+            {
+                cam.transform.position = s.to;
+                cam.transform.rotation = Quaternion.LookRotation(s.lookTo - s.to);
+                cam.fieldOfView = eyeFov; lens.weight = 0f;
             }
             s.onUpdate?.Invoke(1f);
         }
@@ -180,11 +210,12 @@ public class CutscenePlayer : MonoBehaviour
             yield break;
         }
 
-        // short dip to black, back to the player's eyes
+        // back to the player's eyes: straight through when the camera is already there, otherwise (or
+        // when skipped) a short dip to black
+        bool cut = !intoEyes || skip;
         fadeImage.color = Color.black;
-        yield return Fade(1f, 0.25f);
-        foreach (var r in hiddenPlayer) if (r != null) r.enabled = true;
-        hiddenPlayer.Clear();
+        if (cut) yield return Fade(1f, 0.25f);
+        ShowPlayerBody();
         lens.weight = 0f;
         if (playerCam != null) playerCam.enabled = true;
         Destroy(cam.gameObject);
@@ -192,8 +223,16 @@ public class CutscenePlayer : MonoBehaviour
         GameState.IsCutscene = false;
         GameHud.SetVisible(true);
         IsPlaying = false;
-        yield return Fade(0f, 0.35f);
+        if (cut) yield return Fade(0f, 0.35f);
         yield return Bars(0f, 0.4f);
+    }
+
+    const float CinemaFov = 50f;
+
+    void ShowPlayerBody()
+    {
+        foreach (var r in hiddenPlayer) if (r != null) r.enabled = true;
+        hiddenPlayer.Clear();
     }
 
     /// <summary>Very small, slow camera drift, like a camera operator holding the shot.</summary>

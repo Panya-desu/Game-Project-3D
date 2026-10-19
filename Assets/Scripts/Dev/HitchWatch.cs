@@ -46,7 +46,7 @@ public class HitchWatch : MonoBehaviour
             string split = FrameTimingManager.GetLatestTimings(1, timing) > 0
                 ? $" cpuMain={timing[0].cpuMainThreadFrameTime:F0} cpuRender={timing[0].cpuRenderThreadFrameTime:F0} gpu={timing[0].gpuFrameTime:F0}"
                 : "";
-            Debug.Log($"[Hitch] {dt * 1000f:F0} ms at t={Time.realtimeSinceStartup:F1} scene={SceneManager.GetActiveScene().name} cutscene={CutscenePlayer.IsPlaying} gc={(gc != lastGc ? "yes" : "no")} last={LastEvent}{split}");
+            Debug.Log($"[Hitch] {dt * 1000f:F0} ms at t={Time.realtimeSinceStartup:F1} scene={SceneManager.GetActiveScene().name} cutscene={CutscenePlayer.IsPlaying} black={ScreenFader.Opaque} gc={(gc != lastGc ? "yes" : "no")} last={LastEvent}{split}");
         }
         lastGc = gc;
     }

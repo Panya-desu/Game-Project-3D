@@ -104,23 +104,32 @@ public class LevelCutscenes : MonoBehaviour
             // back behind her shoulder and into her eyes
             new CutscenePlayer.Shot(feet + toRoom * 1.2f + right * 1.1f + Vector3.up * 1.7f * sc, eye.transform.position,
                                     head, eye.transform.position + fwd * 3f, 2.4f,
-                                    onUpdate: k => { if (heroRoot != null && k > 0.7f) heroRoot.SetActive(false); }),
+                                    onUpdate: k => { CutscenePlayer.HideWhenCameraReaches(heroRoot, 0.32f * PlayerAvatar.ModelScale); if (heroRoot != null && k > 0.9f) heroRoot.SetActive(false); }),
         };
         CutscenePlayer.Play(shots, () =>
         {
             if (heroRoot != null) Destroy(heroRoot);
             hero = null;
-        });
+        }, intoEyes: true);
     }
 
     // ───────────── 2. power restored ─────────────
+
+    // the fuse box on the storage room's west wall, in its nook between the crates and the bookshelf, and
+    // the lever in its south-east corner (the one in plain sight from the fuse box)
+    static readonly Vector3 FuseBox = new Vector3(23.0f, 3.3f, 8.56f);
+    static readonly Vector3 CornerLever = new Vector3(37.53f, 2.95f, 3.4f);
 
     void PowerRestored()
     {
         var shots = new[]
         {
-            new CutscenePlayer.Shot(new Vector3(24.3f, 3.1f, 10.2f), new Vector3(26.4f, 3.4f, 14.2f),
-                                    new Vector3(30f, 1.6f, 15f), new Vector3(32f, 1.7f, 18.5f), 4.5f),
+            // the fuse box as the last fuse goes in: the lights flicker back on over it
+            new CutscenePlayer.Shot(FuseBox + new Vector3(2.1f, 0.25f, -0.35f), FuseBox + new Vector3(1.35f, 0.1f, -0.15f),
+                                    FuseBox + new Vector3(0f, -0.05f, 0f), FuseBox, 2.6f),
+            // the lit room: from beside the fuse box the camera drifts out and turns to a lever, which works now
+            new CutscenePlayer.Shot(new Vector3(26.0f, 4.2f, 6.6f), new Vector3(31.5f, 3.7f, 5.3f),
+                                    new Vector3(32f, 2.4f, 11f), CornerLever, 4.2f),
         };
         CutscenePlayer.Play(shots);
     }
@@ -195,13 +204,22 @@ public class LevelCutscenes : MonoBehaviour
         // where they solved the puzzle when control comes back
         var ending = GameObject.Find("ToEnding");
         var door = ending != null ? ending.GetComponentInChildren<Door>(true) : null;
-        Vector3 target = door != null ? door.transform.position + new Vector3(0.4f, 1.6f, 0f) : new Vector3(30.6f, 1.6f, 8f);
+        // framed dead centre: on the axis of the door frame, level with its middle (the door's own pivot
+        // is at its hinge, which put the door off to one side)
+        Vector3 target = new Vector3(30.2f, 2.2f, 8f), facing = Vector3.forward;
+        if (door != null)
+        {
+            Renderer frame = null;
+            foreach (var r in ending.GetComponentsInChildren<Renderer>(true)) if (r.name == "DoorFrame") frame = r;
+            target = frame != null ? frame.bounds.center : door.transform.position + Vector3.up * 2.2f;
+            facing = Vector3.ProjectOnPlane(door.transform.forward, Vector3.up).normalized;
+        }
 
         var shots = new[]
         {
             // a flash, and a door stands where there was none; the camera slowly drifts closer
-            new CutscenePlayer.Shot(target + new Vector3(-0.2f, 0.8f, 7.5f), target + new Vector3(-0.2f, 0.3f, 4.2f),
-                                    target + Vector3.up * 0.4f, target, 4.5f,
+            new CutscenePlayer.Shot(target + facing * 8f + Vector3.up * 0.4f, target + facing * 5.4f,
+                                    target + Vector3.up * 0.1f, target, 4.5f,
                                     onStart: () =>
                                     {
                                         ScreenFader.Flash(new Color(1f, 1f, 1f, 0.9f), 0.8f);

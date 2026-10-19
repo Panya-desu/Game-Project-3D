@@ -32,7 +32,12 @@ public class CharacterLook : MonoBehaviour
         // authored skirt curves flipped the back of the skirt up when walking (limits are read in OnEnable)
         secondary.enabled = false;
         secondary.skirtMaxAngle = 1f;
-        secondary.hairMaxAngle = 4f;
+        // her new layered hair (EchoHair A): looser than the package default of 4 degrees, which left it stiff;
+        // tested on quick turns (Lab: Hair Motion) with its collision against her head and glasses on
+        secondary.hairMaxAngle = 22f;
+        secondary.hairFrequency = 2.2f;
+        secondary.hairDamping = 0.5f;
+        secondary.hairInertia = 0.55f;
         secondary.stiffness = 65f;
         secondary.drag = 0.35f;
         secondary.shirtMaxAngle = 1.5f;

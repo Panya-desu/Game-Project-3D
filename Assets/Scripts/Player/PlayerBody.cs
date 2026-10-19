@@ -64,6 +64,9 @@ public class PlayerBody : MonoBehaviour
         var root = view.transform.root;
         CharacterKeyLight.Remove(root.gameObject); // never lit (shadow only), and its light would fall on cutscene actors
         foreach (var s in root.GetComponentsInChildren<ActorFootsteps>(true)) Destroy(s); // her steps go through Movement
+        // only her shadow is ever seen: her hair still sways, but without its collision checks against her
+        // head and glasses (about half of the hair motion's cost every frame, for something nobody can see)
+        foreach (var sm in root.GetComponentsInChildren<EchoSecondaryMotion>(true)) sm.hairCollision = false;
         float scale = root.localScale.y;
         root.SetParent(transform, true);
         root.localPosition = new Vector3(0f, bottom, 0f);
@@ -150,6 +153,8 @@ public class PlayerBody : MonoBehaviour
     }
 
     float lastFootTime = -1f, lastMovingTime = -10f, landedAt = -10f;
+    float letGoAt = -1f; Vector2 letGoVelocity;
+    const float StopSeconds = 0.45f;   // how long her stride takes to settle into standing when she stops
 
     /// <summary>
     /// A foot comes down in her animation (FootL/FootR in the clips): one footstep. EchoCharacters v9 sends
@@ -212,7 +217,21 @@ public class PlayerBody : MonoBehaviour
         if (motion != null)
         {
             motion.SetRunning(movement != null && movement.Running && moving);
-            motion.SetLocalVelocity(localVelocity);
+            // the moment the keys are let go she stops where she is: her stride eases into standing over a
+            // quarter of a second, with no stop clip. The package's stops (WalkStop/RunStop) always bring the
+            // back foot up beside the front one, one more step; fed her measured speed, the walk also wound
+            // down through smaller and smaller strides first. Her start clips still play when she sets off.
+            bool letGo = movement != null && movement.MoveInput.sqrMagnitude < 0.0004f;
+            if (!letGo) { letGoAt = -1f; motion.useTransitionClips = true; motion.SetLocalVelocity(localVelocity); }
+            else
+            {
+                if (letGoAt < 0f) { letGoAt = Time.time; letGoVelocity = localVelocity; }
+                // no stop clip while she settles; afterwards her steps on the spot (turning to the view) need them back
+                motion.useTransitionClips = Time.time - letGoAt > StopSeconds + 0.1f;
+                // eased (fast at first, gently at the end) so the last part of the settle is soft, not a snap
+                float u = Mathf.Clamp01((Time.time - letGoAt) / StopSeconds);
+                motion.SetLocalVelocity(letGoVelocity * (1f - u) * (1f - u));
+            }
         }
         else view.SetLocomotion(moving ? .5f : 0f);
         // she turns to face where the player looks. Walking, she follows the view at once; standing, her

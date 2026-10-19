@@ -65,6 +65,10 @@ public static class EnvironmentBuilder
         water.SetTexture("_BumpMap", Tex("water_normal.png"));
         water.SetFloat("_BumpScale", 0.25f);
         water.EnableKeyword("_NORMALMAP");
+        // no glint of the sun: on this mirror-smooth water it was a bright blob that followed the player
+        // around whenever they looked down (the reflections of the gates and shards stay)
+        water.SetFloat("_SpecularHighlights", 0f);
+        water.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
         water.SetTextureScale("_BaseMap", new Vector2(30, 30));
         water.SetTextureScale("_BumpMap", new Vector2(30, 30));
         // Drawn after opaque objects (so it covers the mirrored gate) but before other transparent things
@@ -394,7 +398,10 @@ public static class EnvironmentBuilder
         sun.intensity = sunIntensity;
         sun.shadows = LightShadows.Soft;
         sun.shadowStrength = 0.55f;
-        sun.transform.rotation = Quaternion.Euler(38f, -28f, 0f);
+        // the White Space sun stands high: her shadow there is as short as the house lamps' (a lower sun
+        // stretched it out to more than her height)
+        float elevation = EditorSceneManager.GetActiveScene().name == "WhiteSpace" ? 64f : 38f;
+        sun.transform.rotation = Quaternion.Euler(elevation, -28f, 0f);
         RenderSettings.sun = sun;
     }
 

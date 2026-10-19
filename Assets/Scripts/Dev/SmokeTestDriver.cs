@@ -230,12 +230,11 @@ public class SmokeTestDriver : MonoBehaviour
     static Transform Hinge(InteractiveDoor door) =>
         ((DoorController)Field(typeof(InteractiveDoor), "doorController").GetValue(door)).Hinge;
 
-    bool walkOk; Vector3 walkEnd;
+    bool walkOk; Vector3 walkEnd; float walkPath; // walkPath: the distance she really covered (the path turns)
     IEnumerator Walk(params Vector3[] points)
     {
         var player = Find<Movement>();
-        var cc = player.GetComponent<CharacterController>();
-        walkOk = true;
+        walkOk = true; walkPath = 0f; Vector3 prev = player.transform.position;
         foreach (var target in points)
         {
             float last = Time.time, best = float.MaxValue;
@@ -246,11 +245,15 @@ public class SmokeTestDriver : MonoBehaviour
                 float dist = d.magnitude;
                 if (dist < 0.5f) break;
                 if (dist < best - 0.2f) { best = dist; last = Time.time; }
-                if (Time.time - last > 2f) { walkOk = false; walkEnd = player.transform.position; yield break; }
-                cc.Move((d.normalized * 5f + Vector3.down * 2f) * Time.deltaTime); // with gravity, as the motor moves her
+                if (Time.time - last > 2f) { Movement.LabInput = null; walkOk = false; walkEnd = player.transform.position; yield break; }
+                // with the real controls (the movement keys held towards the target), as a player walks her
+                Vector3 local = player.transform.InverseTransformDirection(d.normalized);
+                Movement.LabInput = new Vector2(local.x, local.z);
                 yield return null;
+                walkPath += Vector3.ProjectOnPlane(player.transform.position - prev, Vector3.up).magnitude; prev = player.transform.position;
             }
         }
+        Movement.LabInput = null;
         walkEnd = player.transform.position;
     }
 
@@ -387,9 +390,10 @@ public class SmokeTestDriver : MonoBehaviour
         yield return Walk(new Vector3(5.5f, 0, 7.6f), new Vector3(9.8f, 0, 7.6f), new Vector3(12f, 0, 12.5f));
         Movement.Stepped -= countStep;
         walkedFrom = Vector3.Distance(new Vector3(walkStart.x, 0, walkStart.z), new Vector3(walker.transform.position.x, 0, walker.transform.position.z));
-        Debug.Log($"[Smoke] footsteps: {steps} over {walkedFrom:F1} m, from her feet={walker.StepsFromBody}");
-        Check(walker.StepsFromBody && steps >= 4 && walkedFrom / Mathf.Max(1, steps) > 0.8f && walkedFrom / Mathf.Max(1, steps) < 4f,
-            $"footsteps follow her walking feet ({steps} steps over {walkedFrom:F1} m)");
+        Debug.Log($"[Smoke] footsteps: {steps} over {walkPath:F1} m walked ({walkedFrom:F1} m from the start), from her feet={walker.StepsFromBody}");
+        // one footstep per step of her walk (about a metre at her size in the house), not per frame or per clip
+        Check(walker.StepsFromBody && steps >= 4 && walkPath / Mathf.Max(1, steps) > 0.5f && walkPath / Mathf.Max(1, steps) < 2f,
+            $"footsteps follow her walking feet ({steps} steps over {walkPath:F1} m)");
         Check(walkOk, "walk bedroom -> house (stopped at " + walkEnd + ")");
 
         // ── House ──

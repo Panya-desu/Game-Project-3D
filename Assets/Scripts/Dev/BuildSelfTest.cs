@@ -45,12 +45,53 @@ public class BuildSelfTest : MonoBehaviour
         yield return Sample("level_1 (waking cutscene)");
         yield return new WaitForSeconds(8f);
         yield return Sample("level_1");
+        // her body (shadow and hair springs) on, off and on again, in the same view: what the character costs
+        var body = FindAnyObjectByType<Movement>()?.transform.Find("PlayerBody");
+        if (body != null)
+        {
+            body.gameObject.SetActive(false);
+            yield return new WaitForSeconds(0.5f);
+            yield return Sample("level_1, her body off");
+            body.gameObject.SetActive(true);
+            yield return new WaitForSeconds(0.5f);
+            yield return Sample("level_1, her body on again");
+        }
+        yield return GlassViews();
         SceneManager.LoadScene("Confrontation");
         yield return WaitScene("Confrontation", 20f);
         yield return new WaitForSeconds(3f);
         yield return Sample("confrontation");
         Debug.Log($"[SelfTest] DONE errors={errors}");
         Application.Quit(errors == 0 ? 0 : 1);
+    }
+
+    // the glass wall between the living and dining rooms: frame times looking through it and away from it
+    IEnumerator GlassViews()
+    {
+        var glass = FindObjectsByType<Renderer>(FindObjectsSortMode.None).FirstOrDefault(r => r.name == "WindowTallGlass4m");
+        var mover = FindAnyObjectByType<Movement>();
+        if (glass == null || mover == null) yield break;
+        var cc = mover.GetComponent<CharacterController>();
+        var look = mover.GetComponentInChildren<MouseLook>();
+        Vector3 c = glass.bounds.center;
+        foreach (float side in new[] { 1f, -1f })
+            foreach (bool facing in new[] { true, false })
+            {
+                Vector3 feet = c + Vector3.forward * side * 3f;
+                cc.enabled = false;
+                mover.transform.position = new Vector3(feet.x, mover.transform.position.y, feet.z);
+                mover.transform.rotation = Quaternion.LookRotation(Vector3.forward * (facing ? -side : side));
+                cc.enabled = true;
+                if (look != null) look.SetPitch(0f);
+                yield return new WaitForSeconds(1f);
+                yield return Sample($"glass side {side:F0} {(facing ? "facing" : "away")}");
+                if (!facing) continue;
+                // the same view without the pane: its own shading against what lies behind it
+                glass.enabled = false;
+                yield return new WaitForSeconds(0.5f);
+                yield return Sample($"glass side {side:F0} facing, pane hidden");
+                glass.enabled = true;
+            }
     }
 
     IEnumerator WaitScene(string name, float timeout)
@@ -63,9 +104,17 @@ public class BuildSelfTest : MonoBehaviour
     IEnumerator Sample(string label)
     {
         int frames = 0; float worst = 0f, start = Time.realtimeSinceStartup;
-        while (Time.realtimeSinceStartup - start < 3f) { worst = Mathf.Max(worst, Time.unscaledDeltaTime); frames++; yield return null; }
+        var timing = new FrameTiming[1]; double cpu = 0, render = 0, gpu = 0; int timed = 0;
+        while (Time.realtimeSinceStartup - start < 3f)
+        {
+            worst = Mathf.Max(worst, Time.unscaledDeltaTime); frames++;
+            FrameTimingManager.CaptureFrameTimings();
+            if (FrameTimingManager.GetLatestTimings(1, timing) > 0) { cpu += timing[0].cpuMainThreadFrameTime; render += timing[0].cpuRenderThreadFrameTime; gpu += timing[0].gpuFrameTime; timed++; }
+            yield return null;
+        }
         float avg = (Time.realtimeSinceStartup - start) / frames;
-        Debug.Log($"[SelfTest] {label}: {1f / avg:F0} fps avg, worst frame {worst * 1000f:F0} ms");
+        timed = Mathf.Max(1, timed);
+        Debug.Log($"[SelfTest] {label}: {1f / avg:F0} fps avg, worst frame {worst * 1000f:F0} ms, cpu main {cpu / timed:F1} ms, render thread {render / timed:F1} ms, gpu {gpu / timed:F1} ms");
         HitchWatch.Note("selftest screenshot");
         ScreenCapture.CaptureScreenshot(System.IO.Path.Combine(Application.dataPath, "..", "selftest_" + SceneManager.GetActiveScene().name + ".png"));
         yield return null;

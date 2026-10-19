@@ -56,13 +56,26 @@ public class OpeningCutscene : MonoBehaviour
         Vector3 head = feet + Vector3.up * 1.4f;
 
         Vector3 walkEnd = feet + fwd * 3.2f;
-        Vector3 eyeEnd = walkEnd + (eye.transform.position - feet); // the player's eye, where she stops
+        Vector3 eyeOffset = eye.transform.position - feet; // the player's eye above her feet
 
         hero = CharacterLibrary.Spawn(false, feet, fwd);
         var heroRoot = hero != null ? hero.transform.root.gameObject : null;
         if (heroRoot != null) heroRoot.transform.position = feet;
+        // she sets off just after the cut and her walk fills most of the shot, stopping before the next one
+        float walkFrom = 0.08f;
 
-        var shots = new[]
+        // into her eyes where she stopped, as in the bedroom: from in front of her, a little to the side, the
+        // camera swings past her shoulder into her eyes, so she slides out of the frame before it reaches
+        // her (coming from behind, it went straight through her hair and face). The player is moved there
+        // first, so control returns right where she stands and she never visibly vanishes.
+        CutscenePlayer.Shot IntoHerEyes(Vector3 stand) =>
+            new CutscenePlayer.Shot(stand + fwd * 1.2f + right * 1.1f + Vector3.up * 1.7f * PlayerAvatar.ModelScale, stand + eyeOffset,
+                                    stand + Vector3.up * 1.4f * PlayerAvatar.ModelScale, stand + eyeOffset + fwd * 3f, 2.6f,
+                                    onStart: () => MovePlayerTo(player, stand, fwd),
+                                    onUpdate: k => { CutscenePlayer.HideWhenCameraReaches(heroRoot, 0.32f * PlayerAvatar.ModelScale); if (heroRoot != null && k > 0.9f) heroRoot.SetActive(false); });
+
+        CutscenePlayer.Shot[] shots = null;
+        shots = new[]
         {
             // the sky of drifting memories
             new CutscenePlayer.Shot(feet - fwd * 1.5f + Vector3.up * 1.2f, feet - fwd * 1.2f + Vector3.up * 1.6f,
@@ -80,20 +93,25 @@ public class OpeningCutscene : MonoBehaviour
             new CutscenePlayer.Shot(feet - fwd * 1.6f + right * 0.6f + Vector3.up * 1.6f, feet - fwd * 7f + right * 2.5f + Vector3.up * 5f,
                                     feet + fwd * 4f + Vector3.up * 1.6f, gates + Vector3.up * 2.4f, 6f,
                                     onStart: () => CutscenePlayer.Caption("Three doors... and one of them is already open.", 5.5f),
-                                    // she sets off just after the cut and has stopped before the next shot
-                                    onUpdate: k => CharacterLibrary.Walk(hero, feet, walkEnd, Mathf.InverseLerp(0.08f, 0.8f, k), 6f * 0.72f)),
-            // behind her shoulder where she stopped, and into her eyes (as in the bedroom): the player is moved
-            // there first, so control returns right where she stands and she never visibly vanishes
-            new CutscenePlayer.Shot(walkEnd - fwd * 1.3f + right * 0.85f + Vector3.up * 1.7f, eyeEnd,
-                                    walkEnd + Vector3.up * 1.35f, eyeEnd + fwd * 3f, 2.6f,
-                                    onStart: () => MovePlayerTo(player, walkEnd, fwd),
-                                    onUpdate: k => { if (heroRoot != null && k > 0.8f) heroRoot.SetActive(false); }),
+                                    // she sets off partway through and has stopped before the next shot
+                                    onUpdate: k =>
+                                    {
+                                        CharacterLibrary.Walk(hero, feet, walkEnd, Mathf.InverseLerp(walkFrom, 0.8f, k), 6f * 0.72f);
+                                        // she stops on a planted step, which can leave her a little short of the
+                                        // mark: the last shot goes into her eyes where she really stands
+                                        if (k >= 1f && heroRoot != null)
+                                        {
+                                            Vector3 at = heroRoot.transform.position;
+                                            shots[3] = IntoHerEyes(new Vector3(at.x, walkEnd.y, at.z));
+                                        }
+                                    }),
+            IntoHerEyes(walkEnd),
         };
         CutscenePlayer.Play(shots, () =>
         {
             if (heroRoot != null) Destroy(heroRoot);
             Release();
-        }, startFrom: Color.white);
+        }, startFrom: Color.white, intoEyes: true);
     }
 
     static void MovePlayerTo(Movement player, Vector3 feet, Vector3 facing)

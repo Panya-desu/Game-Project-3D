@@ -73,7 +73,61 @@ namespace EchoCharacters
         // ENDPOINT_SPEC is generated from the Blender bone lengths, in metres.
         static readonly Dictionary<string, float> Lengths = new Dictionary<string, float>
         {
-                        {"SkirtChain00_01", 0.106212010f},
+                        {"HairFlow00_01", 0.037956402f},
+            {"HairFlow00_02", 0.033540078f},
+            {"HairFlow00_03", 0.034631897f},
+            {"HairFlow01_01", 0.035301927f},
+            {"HairFlow01_02", 0.033357043f},
+            {"HairFlow01_03", 0.033411309f},
+            {"HairFlow02_01", 0.063916005f},
+            {"HairFlow02_02", 0.063568085f},
+            {"HairFlow02_03", 0.064187042f},
+            {"HairFlow03_01", 0.063463919f},
+            {"HairFlow03_02", 0.063480631f},
+            {"HairFlow03_03", 0.064893201f},
+            {"HairFlow04_01", 0.070135459f},
+            {"HairFlow04_02", 0.078415886f},
+            {"HairFlow04_03", 0.070296988f},
+            {"HairFlow05_01", 0.070134886f},
+            {"HairFlow05_02", 0.078396909f},
+            {"HairFlow05_03", 0.070178092f},
+            {"HairFlow06_01", 0.072064668f},
+            {"HairFlow06_02", 0.080419317f},
+            {"HairFlow06_03", 0.071695842f},
+            {"HairFlow07_01", 0.072226219f},
+            {"HairFlow07_02", 0.078947306f},
+            {"HairFlow07_03", 0.072020255f},
+            {"HairFlow08_01", 0.071678944f},
+            {"HairFlow08_02", 0.080355927f},
+            {"HairFlow08_03", 0.072960928f},
+            {"HairFlow09_01", 0.072003528f},
+            {"HairFlow09_02", 0.077662259f},
+            {"HairFlow09_03", 0.071824342f},
+            {"HairFlow10_01", 0.072565749f},
+            {"HairFlow10_02", 0.079051070f},
+            {"HairFlow10_03", 0.072062559f},
+            {"HairFlow11_01", 0.070045725f},
+            {"HairFlow11_02", 0.078819126f},
+            {"HairFlow11_03", 0.070286945f},
+            {"HairFlow12_01", 0.070294224f},
+            {"HairFlow12_02", 0.078911766f},
+            {"HairFlow12_03", 0.070522085f},
+            {"HairFlow13_01", 0.063673861f},
+            {"HairFlow13_02", 0.063731596f},
+            {"HairFlow13_03", 0.064706109f},
+            {"HairFlow14_01", 0.063334934f},
+            {"HairFlow14_02", 0.064333476f},
+            {"HairFlow14_03", 0.063943841f},
+            {"HairFlow15_01", 0.033821952f},
+            {"HairFlow15_02", 0.033369686f},
+            {"HairFlow15_03", 0.033389986f},
+            {"HairFlowFaceRight_01", 0.052010532f},
+            {"HairFlowFaceRight_02", 0.053565558f},
+            {"HairFlowFaceRight_03", 0.051774766f},
+            {"HairFlowFaceLeft_01", 0.051786877f},
+            {"HairFlowFaceLeft_02", 0.053152122f},
+            {"HairFlowFaceLeft_03", 0.051687192f},
+            {"SkirtChain00_01", 0.106212010f},
             {"SkirtChain00_02", 0.112587755f},
             {"SkirtChain00_03", 0.105929241f},
             {"SkirtChain01_01", 0.106852660f},
@@ -149,7 +203,7 @@ namespace EchoCharacters
         };
         void OnEnable()
         {
-            joints.Clear();
+            joints.Clear(); ResetHairBinding();
             var animator = GetComponentInChildren<Animator>();
             if (!animator) animator = GetComponentInParent<Animator>();
             if (animator && animator.isHuman)
@@ -168,6 +222,7 @@ namespace EchoCharacters
             foreach (var bone in GetComponentsInChildren<Transform>(true))
             {
                 if (!Lengths.TryGetValue(bone.name, out float length)) continue;
+                if(bone.name.StartsWith("Hair",StringComparison.Ordinal))continue; // Hair uses its own damped solver and authored contact profile.
                 Vector3 axis = Vector3.up;
                 foreach (Transform child in bone)
                     if (Lengths.ContainsKey(child.name)) { axis = child.localPosition.normalized; break; }
@@ -187,6 +242,7 @@ namespace EchoCharacters
             // Animator writes its pose after Update. This also prevents accumulating
             // spring rotation on clips that have no curves for a particular chain.
             foreach (var j in joints) j.bone.localRotation = j.animatedLocal;
+            RestoreHairPose();
         }
         void LateUpdate()
         {
@@ -196,6 +252,7 @@ namespace EchoCharacters
             bool teleport = (transform.position - previousRoot).sqrMagnitude > 1;
             previousRoot = transform.position; LastBend = 0;
             foreach (var j in joints) j.animatedLocal = j.bone.localRotation;
+            SimulateHair(dt,teleport);
             if(layerGuard)
             {
                 if(!guardReady){ContactBuildCount++;SetupShirtGuard();SetupSkirtContacts();SetupContactReferences(guardAnimator);guardReady=true;}
@@ -416,6 +473,7 @@ namespace EchoCharacters
 
         void OnDisable()
         {
+            RestoreHairPose();
             foreach (var j in joints) if (j.bone) j.bone.localRotation = j.animatedLocal;
             joints.Clear();
             if(skirtBake){Destroy(skirtBake);skirtBake=null;}

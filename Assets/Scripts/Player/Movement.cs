@@ -16,7 +16,9 @@ public class Movement : MonoBehaviour, ISaveable
     public float speed = 6f;
     [Tooltip("Seconds to reach full walking speed / to come to a stop")]
     public float accelerationTime = 0.3f, decelerationTime = 0.22f;
-    Vector3 planarVelocity, planarVelocityRef;
+    Vector3 planarVelocity, moveDir;
+    float moveSpeed, moveSpeedRef;
+    const float TurnRate = 12f;   // radians a second her heading swings towards the keys/view
     /// <summary>Running (Shift, forwards only: her run is a forward run; backwards and side steps stay a walk).</summary>
     public bool Running { get; private set; }
     static float RunModelSpeed => EchoCharacters.EchoLocomotion.RunReference; // her run's own pace at scale 1
@@ -44,6 +46,11 @@ public class Movement : MonoBehaviour, ISaveable
     /// <summary>Set by PlayerBody when a jump starts from a stride (she springs off one foot and lands on
     /// the other) rather than from standing (both feet).</summary>
     public bool StrideJump { get; set; }
+    /// <summary>The movement keys this frame (x right, y forward); zero once they are let go.</summary>
+    public Vector2 MoveInput { get; private set; }
+    /// <summary>Lab only: stands in for the movement keys (and Shift) so a test can walk, run and stop her.</summary>
+    public static Vector2? LabInput;
+    public static bool LabRun;
     bool wasGrounded = true;
     float airTime, fallSpeed;
 
@@ -89,6 +96,7 @@ public class Movement : MonoBehaviour, ISaveable
     // Update is called once per frame
     void Update()
     {
+        MoveInput = Vector2.zero; // nothing held while paused, talking or in a cutscene
         if (PauseMenu.IsPaused || GameState.IsCutscene)
         {
             return;
@@ -118,19 +126,34 @@ public class Movement : MonoBehaviour, ISaveable
             velocity.y = groundedForce;
         }
 
-        float x = Input.GetAxis("Horizontal");
-        float z = Input.GetAxis("Vertical");
+        float x = LabInput.HasValue ? LabInput.Value.x : Input.GetAxis("Horizontal");
+        float z = LabInput.HasValue ? LabInput.Value.y : Input.GetAxis("Vertical");
 
         // walking speed follows her walk animation (EchoCharacters v8): forward fastest, backwards slower,
         // a side step slowest, each at the pace her steps really cover, so her feet never slide; it builds
         // up and settles smoothly instead of jumping to full speed
         Vector2 input = Vector2.ClampMagnitude(new Vector2(x, z), 1f);
+        MoveInput = input;
         Vector3 move = transform.right * input.x + transform.forward * input.y;
-        Running = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && input.y > 0.4f && Mathf.Abs(input.x) < 0.75f;
-        float pace = Running ? RunModelSpeed * PlayerAvatar.ModelScale : WalkSpeed(input) * input.magnitude;
-        Vector3 targetVelocity = move.sqrMagnitude > 0.0001f ? move.normalized * pace : Vector3.zero;
-        bool speedingUp = targetVelocity.sqrMagnitude > planarVelocity.sqrMagnitude;
-        planarVelocity = Vector3.SmoothDamp(planarVelocity, targetVelocity, ref planarVelocityRef, speedingUp ? accelerationTime : decelerationTime);
+        Running = (LabRun || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && input.y > 0.4f && Mathf.Abs(input.x) < 0.75f;
+        // direction and speed are eased separately: a change of keys (or a turn of the view) swings her
+        // heading round quickly at her walking pace. Easing the velocity as one vector cut the corner and
+        // her speed dipped on every change of direction, so her walk dropped to a slower stride for a
+        // moment, like a hesitation between steps.
+        bool reversing = false;
+        if (move.sqrMagnitude > 0.0001f)
+        {
+            Vector3 want = move.normalized;
+            // turning right round (more than about 110 degrees) she slows down first and sets off the other way
+            reversing = moveSpeed > 0.3f && moveDir.sqrMagnitude > 0.5f && Vector3.Angle(moveDir, want) > 110f;
+            if (!reversing) moveDir = moveSpeed < 0.05f || moveDir.sqrMagnitude < 0.5f ? want : Vector3.RotateTowards(moveDir, want, TurnRate * Time.deltaTime, 0f);
+        }
+        Vector3 local = transform.InverseTransformDirection(moveDir);
+        float pace = move.sqrMagnitude <= 0.0001f || reversing ? 0f
+                   : Running ? RunModelSpeed * PlayerAvatar.ModelScale
+                   : WalkSpeed(new Vector2(local.x, local.z)) * input.magnitude;
+        moveSpeed = Mathf.SmoothDamp(moveSpeed, pace, ref moveSpeedRef, pace > moveSpeed ? accelerationTime : decelerationTime);
+        planarVelocity = moveDir * moveSpeed;
 
         // Jump (เฉพาะตอนอยู่บนพื้น): a short wind-up, then the push off the ground
         if (grounded && !JumpWindup && Input.GetButtonDown("Jump"))
